@@ -1,26 +1,27 @@
+// app/layout.tsx
 import './globals.css';
 import DeviceGuard from '../components/DeviceGuard';
 import { Analytics } from '@vercel/analytics/next';
+import { CartProvider } from '@/contexts/CartContext';
 import type { Viewport } from 'next';
 
 export const metadata = {
-  title: 'DEPRINCE POS & Inventory',
-  description: 'Point of Sale system for DEPRINCE',
+  title: 'MEEDEX STORE | Quality Gadgets & Electronics',
+  description: 'Shop top gadgets and electronics online.',
 };
 
-// Setting a explicit min-width layout viewport instead of locking to the literal physical screen width
 export const viewport: Viewport = {
-  width: 1024, // Forces the browser canvas to treat the screen as a 1024px desktop monitor
-  initialScale: 0.8, // Slightly zooms out initially so the 1024px layout fits mobile displays
-  maximumScale: 5,
-  userScalable: true,
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-w-[1024px] overflow-x-auto">
-        <DeviceGuard>{children}</DeviceGuard>
+      <body className="bg-gray-50 text-gray-900 antialiased min-h-screen">
+        <CartProvider>
+          <DeviceGuard>{children}</DeviceGuard>
+        </CartProvider>
         <Analytics />
       </body>
     </html>
