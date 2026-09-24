@@ -66,35 +66,40 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
             </div>
           ) : (
             <div className="divide-y max-h-[40vh] overflow-y-auto pr-2 mt-4">
-              {cart.map((item) => (
-                <div key={item.id} className="py-3 flex justify-between items-center">
-                  <div className="flex-1 pr-4">
-                    <h4 className="font-semibold text-gray-800 text-sm line-clamp-1">{item.name}</h4>
-                    <p className="text-indigo-600 font-bold text-sm mt-1">₦{item.price.toLocaleString()}</p>
+              {cart.map((item) => {
+                const itemPrice = item.price ?? item.unit_price ?? 0;
+                return (
+                  <div key={item.id} className="py-3 flex justify-between items-center">
+                    <div className="flex-1 pr-4">
+                      <h4 className="font-semibold text-gray-800 text-sm line-clamp-1">{item.name}</h4>
+                      <p className="text-indigo-600 font-bold text-sm mt-1">
+                        ₦{itemPrice.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                        className="w-7 h-7 rounded border bg-gray-50 hover:bg-gray-100 text-gray-700 flex items-center justify-center font-bold"
+                      >
+                        -
+                      </button>
+                      <span className="text-sm font-semibold w-5 text-center">{item.quantity}</span>
+                      <button
+                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                        className="w-7 h-7 rounded border bg-gray-50 hover:bg-gray-100 text-gray-700 flex items-center justify-center font-bold"
+                      >
+                        +
+                      </button>
+                      <button
+                        onClick={() => removeFromCart(item.id)}
+                        className="ml-3 text-red-500 hover:text-red-700 text-xs font-semibold"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                      className="w-7 h-7 rounded border bg-gray-50 hover:bg-gray-100 text-gray-700 flex items-center justify-center font-bold"
-                    >
-                      -
-                    </button>
-                    <span className="text-sm font-semibold w-5 text-center">{item.quantity}</span>
-                    <button
-                      onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                      className="w-7 h-7 rounded border bg-gray-50 hover:bg-gray-100 text-gray-700 flex items-center justify-center font-bold"
-                    >
-                      +
-                    </button>
-                    <button
-                      onClick={() => removeFromCart(item.id)}
-                      className="ml-3 text-red-500 hover:text-red-700 text-xs font-semibold"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

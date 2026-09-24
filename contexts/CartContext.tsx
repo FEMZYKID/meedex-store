@@ -1,20 +1,16 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { Product } from '../types';
-
-export interface CartItem extends Product {
-  quantity: number;
-}
+import { CartItem } from '../types';
 
 interface CartContextType {
   cart: CartItem[];
-  addToCart: (product: Product) => void;
-  removeFromCart: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
+  addToCart: (product: any) => void;
+  removeFromCart: (id: string) => void;
+  updateQuantity: (id: string, quantity: number) => void;
   clearCart: () => void;
-  totalAmount: number;
   totalItems: number;
+  totalAmount: number;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -23,21 +19,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('meedex_store_cart');
-    if (saved) {
+    const savedCart = localStorage.getItem('meedex_cart');
+    if (savedCart) {
       try {
-        setCart(JSON.parse(saved));
+        setCart(JSON.parse(savedCart));
       } catch (e) {
-        console.error('Failed to parse cart:', e);
+        console.error('Failed to parse cart', e);
       }
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('meedex_store_cart', JSON.stringify(cart));
+    localStorage.setItem('meedex_cart', JSON.stringify(cart));
   }, [cart]);
 
-  const addToCart = (product: Product) => {
+  const addToCart = (product: any) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
       if (existing) {
@@ -45,28 +41,40 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
-      return [...prev, { ...product, quantity: 1 }];
+      return [
+        ...prev,
+        {
+          id: product.id,
+          name: product.name,
+          price: Number(product.price ?? product.unit_price ?? 0),
+          quantity: 1,
+          image_url: product.image_url,
+        },
+      ];
     });
   };
 
-  const removeFromCart = (productId: string) => {
-    setCart((prev) => prev.filter((item) => item.id !== productId));
+  const removeFromCart = (id: string) => {
+    setCart((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const updateQuantity = (productId: string, quantity: number) => {
+  const updateQuantity = (id: string, quantity: number) => {
     if (quantity <= 0) {
-      removeFromCart(productId);
+      removeFromCart(id);
       return;
     }
     setCart((prev) =>
-      prev.map((item) => (item.id === productId ? { ...item, quantity } : item))
+      prev.map((item) => (item.id === id ? { ...item, quantity } : item))
     );
   };
 
   const clearCart = () => setCart([]);
 
-  const totalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const totalAmount = cart.reduce(
+    (sum, item) => sum + Number(item.price ?? item.unit_price ?? 0) * item.quantity,
+    0
+  );
 
   return (
     <CartContext.Provider
@@ -76,8 +84,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         removeFromCart,
         updateQuantity,
         clearCart,
-        totalAmount,
         totalItems,
+        totalAmount,
       }}
     >
       {children}
@@ -87,6 +95,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
 export function useCart() {
   const context = useContext(CartContext);
-  if (!context) throw new Error('useCart must be used within CartProvider');
+  if (!context) {
+    throw new Error('useCart must be used within a CartProvider');
+  }
   return context;
 }
