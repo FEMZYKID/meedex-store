@@ -91,7 +91,10 @@ export default function StorefrontPage() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {filteredProducts.map((product) => {
-              const inStock = (product.stock_quantity ?? 0) > 0;
+              const displayPrice = product.price ?? product.unit_price ?? 0;
+              const currentStock = product.stock_quantity ?? product.stock_qty ?? 0;
+              const inStock = currentStock > 0;
+
               return (
                 <div
                   key={product.id}
@@ -110,13 +113,13 @@ export default function StorefrontPage() {
                     </p>
                     <h3 className="font-semibold text-gray-800 text-sm line-clamp-2 h-10">{product.name}</h3>
                     <p className="text-indigo-900 font-extrabold text-base mt-2">
-                      ₦{product.price?.toLocaleString()}
+                      ₦{displayPrice.toLocaleString()}
                     </p>
                   </div>
 
                   <div className="p-3 border-t bg-gray-50">
                     <button
-                      onClick={() => addToCart(product)}
+                      onClick={() => addToCart({ ...product, price: displayPrice })}
                       disabled={!inStock}
                       className={`w-full py-2 rounded text-xs font-bold transition ${
                         inStock
