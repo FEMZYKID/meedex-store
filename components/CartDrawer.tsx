@@ -1,4 +1,3 @@
-// components/CartDrawer.tsx
 'use client';
 
 import { useState } from 'react';
@@ -53,7 +52,6 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm transition-opacity">
       <div className="w-full max-w-md bg-white h-full flex flex-col justify-between shadow-2xl p-6 overflow-y-auto">
-        {/* Header */}
         <div>
           <div className="flex justify-between items-center pb-4 border-b">
             <h2 className="text-xl font-bold text-gray-800">Your Shopping Cart</h2>
@@ -62,7 +60,6 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
             </button>
           </div>
 
-          {/* Items List */}
           {cart.length === 0 ? (
             <div className="text-center py-16 text-gray-500">
               <p className="text-lg">Your cart is empty.</p>
@@ -102,7 +99,6 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           )}
         </div>
 
-        {/* Customer Checkout Form */}
         {cart.length > 0 && (
           <form onSubmit={handleCheckout} className="border-t pt-4 mt-4 space-y-3">
             <h3 className="font-bold text-sm text-gray-700">Customer Details</h3>
