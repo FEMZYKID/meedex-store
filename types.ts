@@ -17,17 +17,17 @@ export interface Product {
   image_url?: string;
 }
 
-// Flexible CartItem supporting both POS and Online Storefront
+// Unified CartItem satisfying strict POS requirements and Storefront compatibility
 export interface CartItem {
   id: string;
-  product_id?: string;
+  product_id: string;
   name: string;
-  sku?: string;
-  item_type?: 'Full Unit' | 'Adapter' | 'Cable';
-  unit_price?: number;
-  price?: number;
+  sku: string;
+  item_type: 'Full Unit' | 'Adapter' | 'Cable';
+  unit_price: number;
+  price?: number; // Optional for storefront access
   quantity: number;
-  subtotal?: number;
+  subtotal: number;
   image_url?: string;
 }
 

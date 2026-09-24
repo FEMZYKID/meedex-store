@@ -44,7 +44,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             return {
               ...item,
               quantity: nextQty,
-              subtotal: (item.unit_price ?? item.price ?? 0) * nextQty,
+              subtotal: item.unit_price * nextQty,
             };
           }
           return item;
@@ -53,7 +53,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
       const newItem: CartItem = {
         id: product.id,
-        product_id: product.id,
+        product_id: product.id || product.product_id || product.id,
         name: product.name,
         sku: product.sku || '',
         item_type: 'Full Unit',
@@ -80,11 +80,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setCart((prev) =>
       prev.map((item) => {
         if (item.id === id) {
-          const unitP = item.unit_price ?? item.price ?? 0;
           return {
             ...item,
             quantity,
-            subtotal: unitP * quantity,
+            subtotal: item.unit_price * quantity,
           };
         }
         return item;
@@ -96,7 +95,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
   const totalAmount = cart.reduce(
-    (sum, item) => sum + Number(item.price ?? item.unit_price ?? 0) * item.quantity,
+    (sum, item) => sum + (item.price ?? item.unit_price ?? 0) * item.quantity,
     0
   );
 
