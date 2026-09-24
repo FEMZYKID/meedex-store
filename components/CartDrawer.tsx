@@ -10,7 +10,7 @@ interface CartDrawerProps {
 }
 
 export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
-  const { cart, updateQuantity, removeFromCart, totalAmount, clearCart } = useCart();
+  const { cart, updateQuantity, removeFromCart, totalAmount } = useCart();
 
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -43,7 +43,6 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         throw new Error(data.error || 'Failed to start payment');
       }
 
-      // Redirect user to Paystack payment gateway page
       window.location.href = data.authorization_url;
     } catch (err: any) {
       setErrorMessage(err.message || 'Something went wrong.');

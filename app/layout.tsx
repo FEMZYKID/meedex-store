@@ -2,12 +2,12 @@
 import './globals.css';
 import DeviceGuard from '../components/DeviceGuard';
 import { Analytics } from '@vercel/analytics/next';
-import { CartProvider } from '../contexts/CartContext';       
+import { CartProvider } from '../contexts/CartContext';
 import type { Viewport } from 'next';
 
 export const metadata = {
-  title: 'MEEDEX STORE | Quality Gadgets & Electronics',
-  description: 'Shop top gadgets and electronics online.',
+  title: 'MEEDEX GADGETS',
+  description: 'Home of Quality Gadgets & Electronics',
 };
 
 export const viewport: Viewport = {
