@@ -2,10 +2,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useProducts } from '@/hooks/useProducts';
-import { useCart } from '@/contexts/CartContext';
-import CartDrawer from '@/components/CartDrawer';
-
+import { useProducts } from '../../hooks/useProducts';
+import { useCart } from '../../contexts/CartContext';
+import CartDrawer from '../../components/CartDrawer';
 export default function StorefrontPage() {
   const { products, loadingProducts, fetchProducts } = useProducts();
   const { addToCart, totalItems } = useCart();

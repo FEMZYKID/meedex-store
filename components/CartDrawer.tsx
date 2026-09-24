@@ -2,7 +2,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useCart } from '@/contexts/CartContext';
+import { useCart } from '../contexts/CartContext';
 
 interface CartDrawerProps {
   isOpen: boolean;

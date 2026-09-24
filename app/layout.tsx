@@ -2,7 +2,7 @@
 import './globals.css';
 import DeviceGuard from '../components/DeviceGuard';
 import { Analytics } from '@vercel/analytics/next';
-import { CartProvider } from '@/contexts/CartContext';
+import { CartProvider } from '../contexts/CartContext';       
 import type { Viewport } from 'next';
 
 export const metadata = {
