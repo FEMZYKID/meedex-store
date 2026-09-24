@@ -34,23 +34,37 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [cart]);
 
   const addToCart = (product: any) => {
+    const itemPrice = Number(product.price ?? product.unit_price ?? 0);
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
       if (existing) {
-        return prev.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        );
+        return prev.map((item) => {
+          if (item.id === product.id) {
+            const nextQty = item.quantity + 1;
+            return {
+              ...item,
+              quantity: nextQty,
+              subtotal: (item.unit_price ?? item.price ?? 0) * nextQty,
+            };
+          }
+          return item;
+        });
       }
-      return [
-        ...prev,
-        {
-          id: product.id,
-          name: product.name,
-          price: Number(product.price ?? product.unit_price ?? 0),
-          quantity: 1,
-          image_url: product.image_url,
-        },
-      ];
+
+      const newItem: CartItem = {
+        id: product.id,
+        product_id: product.id,
+        name: product.name,
+        sku: product.sku || '',
+        item_type: 'Full Unit',
+        unit_price: itemPrice,
+        price: itemPrice,
+        quantity: 1,
+        subtotal: itemPrice,
+        image_url: product.image_url,
+      };
+
+      return [...prev, newItem];
     });
   };
 
@@ -64,7 +78,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     setCart((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, quantity } : item))
+      prev.map((item) => {
+        if (item.id === id) {
+          const unitP = item.unit_price ?? item.price ?? 0;
+          return {
+            ...item,
+            quantity,
+            subtotal: unitP * quantity,
+          };
+        }
+        return item;
+      })
     );
   };
 
