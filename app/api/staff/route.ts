@@ -31,16 +31,27 @@ async function requireAdmin(req: NextRequest) {
   const supabaseAdmin = getSupabaseAdmin();
   const authHeader = req.headers.get('authorization') || '';
   const token = authHeader.replace('Bearer ', '');
-  if (!token) return null;
+  if (!token) {
+    console.error('[requireAdmin] no bearer token on request');
+    return null;
+  }
 
   const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !user) return null;
+  if (error || !user) {
+    console.error('[requireAdmin] getUser failed:', error?.message, error?.status);
+    return null;
+  }
 
-  const { data: profile } = await supabaseAdmin
+  const { data: profile, error: profileErr } = await supabaseAdmin
     .from('staff')
     .select('role')
     .eq('id', user.id)
     .maybeSingle();
+
+  if (profileErr) {
+    console.error('[requireAdmin] staff lookup error:', profileErr.message);
+  }
+  console.error('[requireAdmin] user.id:', user.id, 'profile:', JSON.stringify(profile));
 
   if (profile?.role !== 'Admin') return null;
   return user;
