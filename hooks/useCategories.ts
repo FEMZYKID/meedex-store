@@ -10,7 +10,7 @@ export function useCategories() {
     setLoadingCategories(true);
     const { data } = await supabase
       .from('categories')
-      .select('id, name, sort_order')
+      .select('id, name, sort_order, parent_id')
       .order('sort_order', { ascending: true });
     if (data) setCategoryList(data);
     setLoadingCategories(false);

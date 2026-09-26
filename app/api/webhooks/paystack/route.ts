@@ -1,7 +1,7 @@
 // app/api/webhooks/paystack/route.ts
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { supabase } from '../../../../lib/supabase';
+import { getSupabaseAdmin } from '../../../../lib/supabaseAdmin';
 
 export async function POST(req: Request) {
   try {
@@ -15,10 +15,7 @@ export async function POST(req: Request) {
     }
 
     // 1. Verify Paystack HMAC-SHA512 Signature for security
-    const hash = crypto
-      .createHmac('sha512', secretKey)
-      .update(bodyText)
-      .digest('hex');
+    const hash = crypto.createHmac('sha512', secretKey).update(bodyText).digest('hex');
 
     if (hash !== paystackSignature) {
       console.error('Invalid Paystack signature');
@@ -27,34 +24,32 @@ export async function POST(req: Request) {
 
     const event = JSON.parse(bodyText);
 
-    // 2. Process successful payments
     if (event.event === 'charge.success') {
       const data = event.data;
-      const { reference, amount, metadata, customer } = data;
-      const cartItems = metadata?.cart_items || [];
-      const customerName = metadata?.customer_name || 'Online Customer';
-      const customerPhone = metadata?.customer_phone || '';
-      const email = customer?.email || '';
+      const { reference, metadata } = data;
+      const orderId = metadata?.order_id;
 
-      // Convert Kobo back to Naira
-      const totalAmount = amount / 100;
+      if (!orderId) {
+        console.error('Webhook charge.success with no order_id in metadata:', reference);
+        return NextResponse.json({ error: 'Missing order_id in metadata' }, { status: 400 });
+      }
 
-      // 3. Call the atomic database RPC function in Supabase
-      const { data: result, error } = await supabase.rpc('process_online_order', {
-        p_paystack_ref: reference,
-        p_customer_name: customerName,
-        p_customer_email: email,
-        p_customer_phone: customerPhone,
-        p_total_amount: totalAmount,
-        p_items: cartItems, // JSON array of items: [{ id, quantity, price }]
+      // 2. Reconcile the pending order created at checkout time: marks it
+      // paid and atomically deducts stock for each item. Uses the service
+      // role client because this updates `products` stock, which RLS
+      // otherwise restricts to admins only.
+      const supabaseAdmin = getSupabaseAdmin();
+      const { error } = await supabaseAdmin.rpc('process_online_order', {
+        p_order_id: orderId,
+        p_reference: reference,
       });
 
       if (error) {
-        console.error('Error executing process_online_order RPC:', error);
+        console.error('Error executing process_online_order RPC:', error.message);
         return NextResponse.json({ error: 'Failed to record online order' }, { status: 500 });
       }
 
-      console.log(`Order successfully processed for ref ${reference}:`, result);
+      console.log(`Order ${orderId} successfully marked paid for ref ${reference}`);
     }
 
     // Always acknowledge receipt to Paystack

@@ -4,11 +4,13 @@ import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../../../lib/supabase';
 import ImageUploader from '@/components/ImageUploader';
 import CategoryFilterBar from '@/components/CategoryFilterBar';
+import CategoryRow from '@/components/CategoryRow';
 import { generateSKU } from '../../../lib/sku';
 import { filterAndSortProducts } from '../../../lib/categories';
+import { buildCategoryTree } from '../../../lib/categoryTree';
 import { useProducts } from '../../../hooks/useProducts';
 import { useCategories } from '../../../hooks/useCategories';
-import type { Product } from '../../../types';
+import type { Product, Category } from '../../../types';
 
 export default function AdminProductsPage() {
   const { products, loadingProducts, fetchProducts } = useProducts();
@@ -46,7 +48,7 @@ export default function AdminProductsPage() {
   const [categoryRenameValue, setCategoryRenameValue] = useState('');
   const [savingCategory, setSavingCategory] = useState(false);
 
-  const handleAddCategory = async (name: string): Promise<boolean> => {
+  const handleAddCategory = async (name: string, parentId: string | null = null): Promise<boolean> => {
     const cleanName = name.trim();
     if (!cleanName) return false;
 
@@ -55,9 +57,12 @@ export default function AdminProductsPage() {
       return false;
     }
 
-    const nextOrder = categoryList.length > 0 ? Math.max(...categoryList.map((c) => c.sort_order)) + 1 : 1;
+    const siblings = categoryList.filter((c) => (c.parent_id || null) === parentId);
+    const nextOrder = siblings.length > 0 ? Math.max(...siblings.map((c) => c.sort_order)) + 1 : 1;
 
-    const { error } = await supabase.from('categories').insert([{ name: cleanName, sort_order: nextOrder }]);
+    const { error } = await supabase
+      .from('categories')
+      .insert([{ name: cleanName, sort_order: nextOrder, parent_id: parentId }]);
     if (error) {
       alert('Error adding category: ' + error.message);
       return false;
@@ -106,19 +111,31 @@ export default function AdminProductsPage() {
       );
       return;
     }
-    if (!confirm(`Delete category "${name}"? This can't be undone.`)) return;
+    const childCount = categoryList.filter((c) => c.parent_id === id).length;
+    const warning =
+      childCount > 0
+        ? `"${name}" has ${childCount} subcategory(ies) under it. Deleting it will NOT delete them — they'll just move back up to become top-level categories. Continue?`
+        : `Delete category "${name}"? This can't be undone.`;
+    if (!confirm(warning)) return;
 
     const { error } = await supabase.from('categories').delete().eq('id', id);
     if (error) alert('Error deleting category: ' + error.message);
     else await fetchCategories();
   };
 
-  const handleMoveCategory = async (index: number, direction: 'up' | 'down') => {
+  // Reordering is scoped to siblings — a category only moves up/down among
+  // others that share the same parent (or among other top-level categories
+  // if it has none), never across the whole flat list.
+  const handleMoveCategory = async (cat: Category, direction: 'up' | 'down') => {
+    const siblings = categoryList
+      .filter((c) => (c.parent_id || null) === (cat.parent_id || null))
+      .sort((a, b) => a.sort_order - b.sort_order);
+    const index = siblings.findIndex((c) => c.id === cat.id);
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= categoryList.length) return;
+    if (index === -1 || targetIndex < 0 || targetIndex >= siblings.length) return;
 
-    const current = categoryList[index];
-    const neighbor = categoryList[targetIndex];
+    const current = siblings[index];
+    const neighbor = siblings[targetIndex];
 
     setSavingCategory(true);
     await Promise.all([
@@ -127,6 +144,25 @@ export default function AdminProductsPage() {
     ]);
     setSavingCategory(false);
     await fetchCategories();
+  };
+
+  // Moves a category to become a subcategory of `newParentId`, or back to
+  // top-level if `newParentId` is null. Placed at the end of its new
+  // sibling group. Two-level hierarchy is enforced by the dropdown only
+  // ever offering top-level categories (with no children of their own) as
+  // a parent choice — see the "Assign to" select below.
+  const handleChangeParent = async (catId: string, newParentId: string | null) => {
+    const newSiblings = categoryList.filter((c) => (c.parent_id || null) === newParentId && c.id !== catId);
+    const nextOrder = newSiblings.length > 0 ? Math.max(...newSiblings.map((c) => c.sort_order)) + 1 : 1;
+
+    setSavingCategory(true);
+    const { error } = await supabase
+      .from('categories')
+      .update({ parent_id: newParentId, sort_order: nextOrder })
+      .eq('id', catId);
+    setSavingCategory(false);
+    if (error) alert('Error moving category: ' + error.message);
+    else await fetchCategories();
   };
 
   const resetProductForm = () => {
@@ -228,6 +264,12 @@ export default function AdminProductsPage() {
   };
 
   const categoryPillNames = useMemo(() => ['All', ...categoryList.map((c) => c.name)], [categoryList]);
+  const categoryTree = useMemo(() => buildCategoryTree(categoryList), [categoryList]);
+  // Only top-level categories can be picked as a parent — a category that
+  // is itself already a child can't have children of its own, which keeps
+  // the hierarchy to two levels, never three. A single parent can still
+  // have as many children as you like.
+  const possibleParents = useMemo(() => categoryList.filter((c) => !c.parent_id), [categoryList]);
 
   const filteredProducts = useMemo(() => {
     return filterAndSortProducts(products, categoryList, selectedCategory, searchQuery);
@@ -554,94 +596,54 @@ export default function AdminProductsPage() {
             </button>
             <h3 className="text-sm font-bold text-white mb-1">Manage Categories</h3>
             <p className="text-[11px] text-slate-400 mb-4">
-              Reorder with the arrows, rename, or delete. Order here also controls the filter pills on the main page.
+              Reorder with the arrows, rename, delete, or use the dropdown to group a category under
+              another (e.g. nest &quot;Screen Protectors&quot; types under one heading). This order also
+              controls the storefront homepage sections and the filter pills here and on the register.
             </p>
 
-            <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
               {loadingCategories ? (
                 <p className="text-xs text-slate-500">Loading…</p>
-              ) : categoryList.length === 0 ? (
+              ) : categoryTree.length === 0 ? (
                 <p className="text-xs text-slate-500">No categories yet.</p>
               ) : (
-                categoryList.map((cat, index) => (
-                  <div
-                    key={cat.id}
-                    className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 rounded-lg p-2"
-                  >
-                    <div className="flex flex-col">
-                      <button
-                        type="button"
-                        disabled={index === 0 || savingCategory}
-                        onClick={() => handleMoveCategory(index, 'up')}
-                        className="text-slate-400 hover:text-cyan-400 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer text-[10px] leading-none"
-                      >
-                        ▲
-                      </button>
-                      <button
-                        type="button"
-                        disabled={index === categoryList.length - 1 || savingCategory}
-                        onClick={() => handleMoveCategory(index, 'down')}
-                        className="text-slate-400 hover:text-cyan-400 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer text-[10px] leading-none"
-                      >
-                        ▼
-                      </button>
-                    </div>
-
-                    {categoryRenameId === cat.id ? (
-                      <input
-                        type="text"
-                        autoFocus
-                        value={categoryRenameValue}
-                        onChange={(e) => setCategoryRenameValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleRenameCategory(cat.id, cat.name);
-                          if (e.key === 'Escape') setCategoryRenameId(null);
-                        }}
-                        className="flex-1 bg-slate-950 border border-cyan-500 rounded p-1.5 text-xs text-white focus:outline-none"
+                categoryTree.map((parent) => (
+                  <div key={parent.id} className="space-y-1.5">
+                    <CategoryRow
+                      cat={parent}
+                      indent={false}
+                      hasChildren={parent.children.length > 0}
+                      categoryList={categoryList}
+                      possibleParents={possibleParents}
+                      categoryRenameId={categoryRenameId}
+                      categoryRenameValue={categoryRenameValue}
+                      savingCategory={savingCategory}
+                      setCategoryRenameId={setCategoryRenameId}
+                      setCategoryRenameValue={setCategoryRenameValue}
+                      onMove={handleMoveCategory}
+                      onRename={handleRenameCategory}
+                      onDelete={handleDeleteCategory}
+                      onChangeParent={handleChangeParent}
+                    />
+                    {parent.children.map((child) => (
+                      <CategoryRow
+                        key={child.id}
+                        cat={child}
+                        indent={true}
+                        hasChildren={false}
+                        categoryList={categoryList}
+                        possibleParents={possibleParents}
+                        categoryRenameId={categoryRenameId}
+                        categoryRenameValue={categoryRenameValue}
+                        savingCategory={savingCategory}
+                        setCategoryRenameId={setCategoryRenameId}
+                        setCategoryRenameValue={setCategoryRenameValue}
+                        onMove={handleMoveCategory}
+                        onRename={handleRenameCategory}
+                        onDelete={handleDeleteCategory}
+                        onChangeParent={handleChangeParent}
                       />
-                    ) : (
-                      <span className="flex-1 text-xs text-slate-200">{cat.name}</span>
-                    )}
-
-                    {categoryRenameId === cat.id ? (
-                      <>
-                        <button
-                          type="button"
-                          disabled={savingCategory}
-                          onClick={() => handleRenameCategory(cat.id, cat.name)}
-                          className="text-emerald-400 hover:underline cursor-pointer text-[11px]"
-                        >
-                          Save
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCategoryRenameId(null)}
-                          className="text-slate-400 hover:underline cursor-pointer text-[11px]"
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCategoryRenameId(cat.id);
-                            setCategoryRenameValue(cat.name);
-                          }}
-                          className="text-cyan-400 hover:underline cursor-pointer text-[11px]"
-                        >
-                          Rename
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteCategory(cat.id, cat.name)}
-                          className="text-rose-400 hover:underline cursor-pointer text-[11px]"
-                        >
-                          Delete
-                        </button>
-                      </>
-                    )}
+                    ))}
                   </div>
                 ))
               )}

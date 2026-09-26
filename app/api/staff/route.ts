@@ -6,26 +6,7 @@
 // double-checks the caller is a logged-in Admin before doing anything.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-
-// Lazily constructed — NOT at module top-level. Next.js briefly loads every
-// API route module during `next build` to collect its metadata, which means
-// top-level code runs at BUILD time, not just at request time. On a local
-// machine (or any CI) without SUPABASE_SERVICE_ROLE_KEY set, constructing
-// the client eagerly here crashed the build with "supabaseUrl is required."
-// Deferring construction until a real request comes in avoids that entirely.
-let supabaseAdminSingleton: SupabaseClient | null = null;
-
-function getSupabaseAdmin() {
-  if (!supabaseAdminSingleton) {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    supabaseAdminSingleton = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-  }
-  return supabaseAdminSingleton;
-}
+import { getSupabaseAdmin } from '../../../lib/supabaseAdmin';
 
 async function requireAdmin(req: NextRequest) {
   const supabaseAdmin = getSupabaseAdmin();

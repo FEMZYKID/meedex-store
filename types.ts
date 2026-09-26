@@ -105,6 +105,7 @@ export interface Category {
   id: string;
   name: string;
   sort_order: number;
+  parent_id?: string | null;
 }
 
 export interface CurrentUser {
