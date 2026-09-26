@@ -118,9 +118,21 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'You cannot delete your own logged-in account.' }, { status: 400 });
   }
 
-  // Deleting the auth user cascades to the staff row (FK ON DELETE CASCADE)
+  // Deleting the auth user cascades to the staff row (FK ON DELETE CASCADE).
+  // Some staff rows may have been created without a matching auth login
+  // (e.g. seeded directly into the table) — for those, fall back to
+  // removing the staff row itself instead of failing outright.
   const { error } = await supabaseAdmin.auth.admin.deleteUser(id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    const notFound = /not.*found/i.test(error.message);
+    if (!notFound) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    const { error: staffDeleteErr } = await supabaseAdmin.from('staff').delete().eq('id', id);
+    if (staffDeleteErr) {
+      return NextResponse.json({ error: staffDeleteErr.message }, { status: 400 });
+    }
+  }
 
   return NextResponse.json({ success: true });
 }
