@@ -29,6 +29,16 @@ export async function POST(req: Request) {
 
     const totalAmount = items.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0);
 
+    // Known flat fees for the two campus zones; "Others" varies by exact
+    // location, so it's left null here and confirmed with the customer
+    // directly after checkout (see CartDrawer's messaging for this).
+    const DELIVERY_FEES: Record<string, number> = {
+      'LASU On-Campus': 400,
+      'LASU Off-Campus': 800,
+    };
+    const deliveryFee =
+      deliveryMethod === 'delivery' ? DELIVERY_FEES[deliveryZone] ?? null : null;
+
     // 1. Create the order up front, in 'pending' status — this is the row
     // the Paystack webhook will later flip to 'paid' and deduct stock
     // against, once payment is actually confirmed.
@@ -42,6 +52,7 @@ export async function POST(req: Request) {
         customer_phone: customerPhone || null,
         delivery_method: deliveryMethod,
         delivery_zone: deliveryMethod === 'delivery' ? deliveryZone : null,
+        delivery_fee: deliveryFee,
         shipping_address: address || null,
       })
       .select('id')
@@ -57,6 +68,7 @@ export async function POST(req: Request) {
       product_id: item.product_id || item.id,
       quantity: item.quantity,
       price_at_purchase: item.price ?? item.unit_price ?? 0,
+      item_type: item.item_type || 'Full Unit',
     }));
 
     const { error: itemsErr } = await supabaseAdmin.from('order_items').insert(orderItemsPayload);
@@ -86,6 +98,7 @@ export async function POST(req: Request) {
           customer_phone: customerPhone,
           delivery_method: deliveryMethod,
           delivery_zone: deliveryZone || null,
+          delivery_fee: deliveryFee,
         },
       }),
     });

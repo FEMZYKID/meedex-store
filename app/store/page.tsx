@@ -8,9 +8,55 @@ import { buildCategoryTree, buildLeafOrder } from '../../lib/categoryTree';
 import CartDrawer from '../../components/CartDrawer';
 import type { Product } from '../../types';
 
-function ProductCard({ product, onAdd }: { product: Product; onAdd: (p: Product) => void }) {
-  const displayPrice = product.price ?? product.unit_price ?? 0;
-  const currentStock = product.stock_quantity ?? product.stock_qty ?? 0;
+function ProductCard({ product, onAdd }: { product: Product; onAdd: (p: Product, opts?: any) => void }) {
+  if (product.is_splittable) {
+    const adapterStock = product.stock_adapter ?? 0;
+    const cableStock = product.stock_cable ?? 0;
+    const fullStock = Math.min(adapterStock, cableStock); // a Full Set needs one of each
+
+    const options = [
+      { label: 'Full Set', price: product.unit_price, stock: fullStock, itemType: 'Full Unit' as const },
+      { label: 'Adapter Only', price: product.adapter_price ?? 0, stock: adapterStock, itemType: 'Adapter' as const },
+      { label: 'Cable Only', price: product.cable_price ?? 0, stock: cableStock, itemType: 'Cable' as const },
+    ];
+
+    return (
+      <div className="bg-white border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between">
+        <div className="p-3">
+          <div className="w-full h-36 bg-gray-100 rounded flex items-center justify-center overflow-hidden mb-3">
+            {product.image_url ? (
+              <img src={product.image_url} alt={product.name} className="object-cover h-full w-full" />
+            ) : (
+              <span className="text-gray-400 text-xs">No Image</span>
+            )}
+          </div>
+          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">{product.category || 'General'}</p>
+          <h3 className="font-semibold text-gray-800 text-sm line-clamp-2 h-10">{product.name}</h3>
+        </div>
+
+        <div className="p-3 border-t bg-gray-50 space-y-1.5">
+          {options.map((opt) => (
+            <button
+              key={opt.itemType}
+              onClick={() => onAdd(product, { itemType: opt.itemType, price: opt.price, maxQuantity: opt.stock })}
+              disabled={opt.stock <= 0}
+              className={`w-full flex items-center justify-between px-2.5 py-2 rounded text-xs font-bold transition ${
+                opt.stock > 0
+                  ? 'bg-amber-500 hover:bg-amber-600 text-slate-900'
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <span>{opt.stock > 0 ? `+ Add ${opt.label}` : `${opt.label} — Out of Stock`}</span>
+              <span>₦{opt.price.toLocaleString()}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const displayPrice = product.unit_price ?? 0;
+  const currentStock = product.stock_qty ?? 0;
   const inStock = currentStock > 0;
 
   return (
@@ -30,7 +76,7 @@ function ProductCard({ product, onAdd }: { product: Product; onAdd: (p: Product)
 
       <div className="p-3 border-t bg-gray-50">
         <button
-          onClick={() => onAdd({ ...product, price: displayPrice })}
+          onClick={() => onAdd(product, { itemType: 'Full Unit', price: displayPrice, maxQuantity: currentStock })}
           disabled={!inStock}
           className={`w-full py-2 rounded text-xs font-bold transition ${
             inStock ? 'bg-amber-500 hover:bg-amber-600 text-slate-900' : 'bg-gray-200 text-gray-400 cursor-not-allowed'

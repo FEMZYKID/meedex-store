@@ -5,7 +5,10 @@ import { CartItem } from '../types';
 
 interface CartContextType {
   cart: CartItem[];
-  addToCart: (product: any) => void;
+  addToCart: (
+    product: any,
+    options?: { itemType?: 'Full Unit' | 'Adapter' | 'Cable'; price?: number; maxQuantity?: number }
+  ) => void;
   removeFromCart: (id: string) => void;
   updateQuantity: (id: string, quantity: number) => void;
   clearCart: () => void;
@@ -33,30 +36,33 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('meedex_cart', JSON.stringify(cart));
   }, [cart]);
 
-  const addToCart = (product: any) => {
-    const itemPrice = Number(product.price ?? product.unit_price ?? 0);
+  const addToCart = (
+    product: any,
+    options?: { itemType?: 'Full Unit' | 'Adapter' | 'Cable'; price?: number; maxQuantity?: number }
+  ) => {
+    const itemType = options?.itemType || 'Full Unit';
+    const itemPrice = Number(options?.price ?? product.price ?? product.unit_price ?? 0);
+    // Full Unit keeps the plain product id (so existing carts in localStorage
+    // still match); Adapter/Cable get a distinct id so they're a separate
+    // line from a Full Unit of the same product.
+    const lineId = itemType === 'Full Unit' ? product.id : `${product.id}_${itemType}`;
+    const cap = options?.maxQuantity;
+
     setCart((prev) => {
-      const existing = prev.find((item) => item.id === product.id);
+      const existing = prev.find((item) => item.id === lineId);
       if (existing) {
-        return prev.map((item) => {
-          if (item.id === product.id) {
-            const nextQty = item.quantity + 1;
-            return {
-              ...item,
-              quantity: nextQty,
-              subtotal: item.unit_price * nextQty,
-            };
-          }
-          return item;
-        });
+        const nextQty = cap ? Math.min(existing.quantity + 1, cap) : existing.quantity + 1;
+        return prev.map((item) =>
+          item.id === lineId ? { ...item, quantity: nextQty, subtotal: item.unit_price * nextQty } : item
+        );
       }
 
       const newItem: CartItem = {
-        id: product.id,
-        product_id: product.id || product.product_id || product.id,
-        name: product.name,
+        id: lineId,
+        product_id: product.id || product.product_id,
+        name: itemType === 'Full Unit' ? product.name : `${product.name} (${itemType} only)`,
         sku: product.sku || '',
-        item_type: 'Full Unit',
+        item_type: itemType,
         unit_price: itemPrice,
         price: itemPrice,
         quantity: 1,

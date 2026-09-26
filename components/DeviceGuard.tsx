@@ -2,16 +2,25 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { supabase } from '../lib/supabase';
 
 export default function DeviceGuard({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  // The public storefront (customer-facing shopping site) must be reachable
+  // by anyone, instantly — device approval is a POS/admin-only concept for
+  // staff hardware, not something a shopper should ever hit.
+  const isPublicStorefront = pathname?.startsWith('/store');
+
   const [deviceStatus, setDeviceStatus] = useState<'checking' | 'approved' | 'pending' | 'blocked'>('checking');
   const [deviceId, setDeviceId] = useState<string>('');
   const [deviceName, setDeviceName] = useState<string>('');
 
   useEffect(() => {
+    if (isPublicStorefront) return;
     checkDevice();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPublicStorefront]);
 
   const getDeviceName = () => {
     const ua = navigator.userAgent;
@@ -105,6 +114,10 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
       setDeviceStatus('approved');
     }
   };
+
+  if (isPublicStorefront) {
+    return <>{children}</>;
+  }
 
   if (deviceStatus === 'checking') {
     return (

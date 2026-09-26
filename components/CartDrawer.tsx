@@ -8,7 +8,24 @@ import { useCart } from '../contexts/CartContext';
 // ---------------------------------------------------------------------
 const STORE_PICKUP_ADDRESS = 'Along PPL Street, LASU';
 
+// ---------------------------------------------------------------------
+// EDIT ME: delivery fees by zone. "Others" has no fixed fee since it
+// varies by exact location — that's communicated to the customer
+// separately instead of a number (see deliveryFeeNote below).
+// ---------------------------------------------------------------------
+const DELIVERY_FEES: Record<string, number> = {
+  'LASU On-Campus': 400,
+  'LASU Off-Campus': 800,
+};
 const DELIVERY_ZONES = ['LASU On-Campus', 'LASU Off-Campus', 'Others'] as const;
+
+// Inputs and selects don't get a text color from Tailwind by default, so
+// they were silently inheriting the page's near-white dark-mode text color
+// (globals.css sets --foreground to a light color under
+// prefers-color-scheme: dark) — invisible against these white fields.
+// Every field below sets its color explicitly so this can't happen again.
+const FIELD_CLASS =
+  'w-full px-3 py-2 border rounded text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -29,6 +46,15 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [errorMessage, setErrorMessage] = useState('');
 
   if (!isOpen) return null;
+
+  const deliveryFeeNote = (() => {
+    if (deliveryMethod !== 'delivery' || !deliveryZone) return null;
+    const fee = DELIVERY_FEES[deliveryZone];
+    if (fee) {
+      return `Delivery fee: ₦${fee.toLocaleString()} — paid on delivery, not included in this online payment.`;
+    }
+    return 'Delivery fee varies by your exact location. We\u2019ll confirm the amount with you by phone/email shortly after your order is placed.';
+  })();
 
   async function handleCheckout(e: React.FormEvent) {
     e.preventDefault();
@@ -70,7 +96,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm transition-opacity">
-      <div className="w-full max-w-md bg-white h-full flex flex-col justify-between shadow-2xl p-6 overflow-y-auto">
+      <div className="w-full max-w-md bg-white h-full flex flex-col justify-between shadow-2xl p-6 overflow-y-auto text-gray-900">
         <div>
           <div className="flex justify-between items-center pb-4 border-b">
             <h2 className="text-xl font-bold text-gray-800">Your Shopping Cart</h2>
@@ -103,7 +129,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                         >
                           -
                         </button>
-                        <span className="text-sm font-semibold w-5 text-center">{item.quantity}</span>
+                        <span className="text-sm font-semibold w-5 text-center text-gray-900">{item.quantity}</span>
                         <button
                           onClick={() => updateQuantity(item.id, item.quantity + 1)}
                           className="w-7 h-7 rounded border bg-gray-50 hover:bg-gray-100 text-gray-700 flex items-center justify-center font-bold"
@@ -126,6 +152,9 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 <span>Total:</span>
                 <span className="text-indigo-600">₦{totalAmount.toLocaleString()}</span>
               </div>
+              <p className="text-[11px] text-gray-500 mt-1">
+                This is the online payment total. Any delivery fee (see below) is separate.
+              </p>
 
               {/* Delivery Method */}
               <h3 className="font-bold text-xs text-gray-500 uppercase tracking-wider mt-6 mb-2">Delivery Method</h3>
@@ -164,12 +193,13 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     required
                     value={deliveryZone}
                     onChange={(e) => setDeliveryZone(e.target.value)}
-                    className="w-full px-3 py-2 border rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className={FIELD_CLASS}
                   >
                     <option value="">Select delivery zone...</option>
                     {DELIVERY_ZONES.map((zone) => (
                       <option key={zone} value={zone}>
                         {zone}
+                        {DELIVERY_FEES[zone] ? ` — ₦${DELIVERY_FEES[zone].toLocaleString()}` : ' — fee varies'}
                       </option>
                     ))}
                   </select>
@@ -179,8 +209,13 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     placeholder="Detailed address / description (hostel name, room number, landmark, etc.)"
                     value={addressDetails}
                     onChange={(e) => setAddressDetails(e.target.value)}
-                    className="w-full px-3 py-2 border rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+                    className={`${FIELD_CLASS} resize-none`}
                   />
+                  {deliveryFeeNote && (
+                    <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                      {deliveryFeeNote}
+                    </p>
+                  )}
                 </div>
               )}
             </>
@@ -199,7 +234,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               placeholder="Full Name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 border rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className={FIELD_CLASS}
             />
             <input
               type="email"
@@ -207,7 +242,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               placeholder="Email Address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className={FIELD_CLASS}
             />
             <input
               type="tel"
@@ -215,7 +250,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               placeholder="Phone Number"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              className="w-full px-3 py-2 border rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className={FIELD_CLASS}
             />
 
             <button
