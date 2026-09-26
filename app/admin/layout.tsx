@@ -83,7 +83,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             />
             <div>
               <h1 className="text-xl font-black text-white tracking-wider uppercase">
-                DEPRINCE TECHNOLOGIES <span className="text-cyan-400">ADMIN</span>
+                MEEDEX GADGETS <span className="text-cyan-400">ADMIN</span>
               </h1>
               <p className="text-xs text-cyan-400/80 font-medium tracking-wide italic">
                 Gadgets. Innovation. Solutions.

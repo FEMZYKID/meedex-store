@@ -504,7 +504,7 @@ export default function PosPage() {
           />
           <div>
             <h1 className="text-lg font-black text-white tracking-wider uppercase">
-              DEPRINCE <span className="text-cyan-400">TECHNOLOGIES</span>
+              MEEDEX <span className="text-cyan-400">GADGETS</span>
             </h1>
             <div className="flex items-center gap-2">
               <p className="text-[10px] text-cyan-400/80 italic tracking-wide">Gadgets. Innovation. Solutions</p>

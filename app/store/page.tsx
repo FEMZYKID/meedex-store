@@ -6,6 +6,7 @@ import { useCategories } from '../../hooks/useCategories';
 import { useCart } from '../../contexts/CartContext';
 import { buildCategoryTree, buildLeafOrder } from '../../lib/categoryTree';
 import CartDrawer from '../../components/CartDrawer';
+import SupportWidget from '../../components/SupportWidget';
 import type { Product } from '../../types';
 
 function ProductCard({ product, onAdd }: { product: Product; onAdd: (p: Product, opts?: any) => void }) {
@@ -149,7 +150,7 @@ export default function StorefrontPage() {
     <div className="min-h-screen flex flex-col bg-gray-100">
       <header className="sticky top-0 z-40 bg-indigo-900 text-white shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          <span className="text-xl font-extrabold tracking-wide">MEEDEX STORE</span>
+          <span className="text-xl font-extrabold tracking-wide">MEEDEX GADGET STORE</span>
 
           <div className="flex-1 max-w-xl mx-2">
             <input
@@ -178,7 +179,7 @@ export default function StorefrontPage() {
       <section className="bg-gradient-to-r from-indigo-800 to-indigo-600 text-white py-8 px-4 text-center">
         <h2 className="text-2xl md:text-3xl font-extrabold mb-2">Quality Gadgets at Unbeatable Prices</h2>
         <p className="text-indigo-100 text-xs md:text-sm max-w-md mx-auto">
-          Instant online checkout powered by Paystack with live stock availability.
+          Instant online checkout powered by Paystack.
         </p>
       </section>
 
@@ -268,6 +269,7 @@ export default function StorefrontPage() {
       </main>
 
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
+      <SupportWidget />
     </div>
   );
 }

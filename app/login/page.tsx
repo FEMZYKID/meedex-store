@@ -158,7 +158,7 @@ export default function LoginPage() {
       <div className="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-5">
         <div className="text-center space-y-1">
           <h1 className="text-xl font-black text-white uppercase tracking-wider">
-            DEPRINCE <span className="text-cyan-400">POS</span>
+            MEEDEX GADGETS <span className="text-cyan-400">POS</span>
           </h1>
           <p className="text-xs text-slate-400">Enter your credentials to unlock register</p>
         </div>

@@ -79,7 +79,11 @@ export async function POST(req: Request) {
 
     // 2. Initialize the Paystack transaction, carrying the order id so the
     // webhook knows exactly which order to reconcile on payment success.
-    const amountInKobo = totalAmount * 100;
+    // Known delivery fees (On-Campus/Off-Campus) are charged upfront as
+    // part of this payment; "Others" has no fixed fee, so only the product
+    // subtotal is charged there and the fee is confirmed separately.
+    const amountToCharge = totalAmount + (deliveryFee || 0);
+    const amountInKobo = amountToCharge * 100;
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
     const response = await fetch('https://api.paystack.co/transaction/initialize', {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCart } from '../contexts/CartContext';
 
 // ---------------------------------------------------------------------
@@ -45,15 +45,34 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  // If the customer clicks the browser's Back button after being sent to
+  // Paystack (instead of completing payment), some browsers restore this
+  // exact page from cache rather than reloading it — including whatever
+  // React state it was frozen in. Without this, "Processing..." (and the
+  // disabled button) would stay stuck forever since no new render ever
+  // happens to reset it. `pageshow` with `event.persisted` fires
+  // specifically for that bfcache-restore case.
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        setLoading(false);
+      }
+    };
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, []);
+
   if (!isOpen) return null;
+
+  const knownFee = deliveryMethod === 'delivery' ? DELIVERY_FEES[deliveryZone] : undefined;
+  const grandTotal = totalAmount + (knownFee || 0);
 
   const deliveryFeeNote = (() => {
     if (deliveryMethod !== 'delivery' || !deliveryZone) return null;
-    const fee = DELIVERY_FEES[deliveryZone];
-    if (fee) {
-      return `Delivery fee: ₦${fee.toLocaleString()} — paid on delivery, not included in this online payment.`;
+    if (knownFee) {
+      return `Delivery fee: ₦${knownFee.toLocaleString()} — included in your payment total below.`;
     }
-    return 'Delivery fee varies by your exact location. We\u2019ll confirm the amount with you by phone/email shortly after your order is placed.';
+    return 'Delivery fee varies by your exact location. We\u2019ll confirm the amount with you by phone/email shortly after your order is placed, and it will be collected separately.';
   })();
 
   async function handleCheckout(e: React.FormEvent) {
@@ -148,13 +167,27 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 })}
               </div>
 
-              <div className="flex justify-between text-base font-bold text-gray-900 pt-3 mt-2 border-t">
-                <span>Total:</span>
-                <span className="text-indigo-600">₦{totalAmount.toLocaleString()}</span>
+              <div className="pt-3 mt-2 border-t space-y-1">
+                <div className="flex justify-between text-sm text-gray-700">
+                  <span>Subtotal:</span>
+                  <span>₦{totalAmount.toLocaleString()}</span>
+                </div>
+                {knownFee ? (
+                  <div className="flex justify-between text-sm text-gray-700">
+                    <span>Delivery fee ({deliveryZone}):</span>
+                    <span>₦{knownFee.toLocaleString()}</span>
+                  </div>
+                ) : deliveryMethod === 'delivery' && deliveryZone ? (
+                  <div className="flex justify-between text-xs text-gray-500 italic">
+                    <span>Delivery fee:</span>
+                    <span>Confirmed after order</span>
+                  </div>
+                ) : null}
+                <div className="flex justify-between text-base font-bold text-gray-900 pt-1">
+                  <span>{knownFee ? 'Total to Pay:' : 'Total:'}</span>
+                  <span className="text-indigo-600">₦{grandTotal.toLocaleString()}</span>
+                </div>
               </div>
-              <p className="text-[11px] text-gray-500 mt-1">
-                This is the online payment total. Any delivery fee (see below) is separate.
-              </p>
 
               {/* Delivery Method */}
               <h3 className="font-bold text-xs text-gray-500 uppercase tracking-wider mt-6 mb-2">Delivery Method</h3>
