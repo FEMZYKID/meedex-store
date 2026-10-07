@@ -504,7 +504,7 @@ export default function PosPage() {
           />
           <div>
             <h1 className="text-lg font-black text-white tracking-wider uppercase">
-              MEEDEX <span className="text-cyan-400">GADGETS</span>
+              DEPRINCE <span className="text-cyan-400">TECHNOLOGIES</span>
             </h1>
             <div className="flex items-center gap-2">
               <p className="text-[10px] text-cyan-400/80 italic tracking-wide">Gadgets. Innovation. Solutions</p>
@@ -519,6 +519,13 @@ export default function PosPage() {
             className="bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/30 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-950/50"
           >
             📊 Income / Expense
+          </Link>
+
+          <Link
+            href="/online-orders"
+            className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+          >
+            🛒 Online Orders
           </Link>
 
           <button

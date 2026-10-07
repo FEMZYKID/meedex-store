@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getSupabaseAdmin } from '../../../../lib/supabaseAdmin';
+import { sendOrderEmail } from '../../../../lib/orderEmails';
 
 export async function POST(req: Request) {
   try {
@@ -50,6 +51,29 @@ export async function POST(req: Request) {
       }
 
       console.log(`Order ${orderId} successfully marked paid for ref ${reference}`);
+
+      // Best-effort: fetch the now-paid order and its items to send the
+      // "we received your order" email. A failure here must never affect
+      // the 200 response to Paystack — the order itself is already saved.
+      try {
+        const { data: order } = await supabaseAdmin.from('orders').select('*').eq('id', orderId).single();
+        const { data: orderItems } = await supabaseAdmin
+          .from('order_items')
+          .select('quantity, price_at_purchase, item_type, products(name)')
+          .eq('order_id', orderId);
+
+        if (order) {
+          const items = (orderItems || []).map((i: any) => ({
+            name: i.products?.name || 'Item',
+            item_type: i.item_type || 'Full Unit',
+            quantity: i.quantity,
+            price_at_purchase: i.price_at_purchase,
+          }));
+          await sendOrderEmail('processing', order, items);
+        }
+      } catch (emailErr) {
+        console.error('Failed to send order-processing email:', emailErr);
+      }
     }
 
     // Always acknowledge receipt to Paystack

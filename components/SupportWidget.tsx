@@ -1,15 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-
-// ---------------------------------------------------------------------
-// EDIT ME: your real support contact details.
-// SUPPORT_WHATSAPP must be digits only, country code first, no + or spaces
-// (e.g. Nigeria number 0801 234 5678 becomes "2348012345678").
-// ---------------------------------------------------------------------
-const SUPPORT_PHONE = '+234 906 791 1723';
-const SUPPORT_WHATSAPP = '2349067911723';
-const SUPPORT_EMAIL = 'meedexgadgets1@gmail.com';
+import { SUPPORT_PHONE, SUPPORT_WHATSAPP, SUPPORT_EMAIL } from '../lib/storeConfig';
 
 export default function SupportWidget() {
   const [isOpen, setIsOpen] = useState(false);

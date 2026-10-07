@@ -2,22 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useCart } from '../contexts/CartContext';
-
-// ---------------------------------------------------------------------
-// EDIT ME: the address shown to customers who choose "Store Pickup".
-// ---------------------------------------------------------------------
-const STORE_PICKUP_ADDRESS = 'Along PPL Street, LASU';
-
-// ---------------------------------------------------------------------
-// EDIT ME: delivery fees by zone. "Others" has no fixed fee since it
-// varies by exact location — that's communicated to the customer
-// separately instead of a number (see deliveryFeeNote below).
-// ---------------------------------------------------------------------
-const DELIVERY_FEES: Record<string, number> = {
-  'LASU On-Campus': 400,
-  'LASU Off-Campus': 800,
-};
-const DELIVERY_ZONES = ['LASU On-Campus', 'LASU Off-Campus', 'Others'] as const;
+import {
+  STORE_PICKUP_ADDRESS,
+  DELIVERY_ZONES,
+  DELIVERY_FEES,
+  DELIVERY_TIMEFRAMES,
+  DEFAULT_DELIVERY_TIMEFRAME_NOTE,
+  type DeliveryZone,
+} from '../lib/storeConfig';
 
 // Inputs and selects don't get a text color from Tailwind by default, so
 // they were silently inheriting the page's near-white dark-mode text color
@@ -64,15 +56,18 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
   if (!isOpen) return null;
 
-  const knownFee = deliveryMethod === 'delivery' ? DELIVERY_FEES[deliveryZone] : undefined;
+  const knownFee = deliveryMethod === 'delivery' ? DELIVERY_FEES[deliveryZone as DeliveryZone] : undefined;
   const grandTotal = totalAmount + (knownFee || 0);
+  const timeframe = deliveryZone ? DELIVERY_TIMEFRAMES[deliveryZone as DeliveryZone] : undefined;
 
   const deliveryFeeNote = (() => {
     if (deliveryMethod !== 'delivery' || !deliveryZone) return null;
     if (knownFee) {
-      return `Delivery fee: ₦${knownFee.toLocaleString()} — included in your payment total below.`;
+      return `Delivery fee: ₦${knownFee.toLocaleString()} — included in your payment total below. Estimated delivery time: ${
+        timeframe || DEFAULT_DELIVERY_TIMEFRAME_NOTE
+      }`;
     }
-    return 'Delivery fee varies by your exact location. We\u2019ll confirm the amount with you by phone/email shortly after your order is placed, and it will be collected separately.';
+    return `Delivery fee varies by your exact location. We\u2019ll confirm the amount with you by phone/email shortly after your order is placed, and it will be collected separately. ${DEFAULT_DELIVERY_TIMEFRAME_NOTE}`;
   })();
 
   async function handleCheckout(e: React.FormEvent) {
@@ -232,7 +227,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     {DELIVERY_ZONES.map((zone) => (
                       <option key={zone} value={zone}>
                         {zone}
-                        {DELIVERY_FEES[zone] ? ` — ₦${DELIVERY_FEES[zone].toLocaleString()}` : ' — fee varies'}
+                        {DELIVERY_FEES[zone] ? ` — ₦${DELIVERY_FEES[zone]!.toLocaleString()}` : ' — fee varies'}
                       </option>
                     ))}
                   </select>

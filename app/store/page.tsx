@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useProducts } from '../../hooks/useProducts';
 import { useCategories } from '../../hooks/useCategories';
 import { useCart } from '../../contexts/CartContext';
@@ -93,16 +94,32 @@ function ProductCard({ product, onAdd }: { product: Product; onAdd: (p: Product,
 export default function StorefrontPage() {
   const { products, loadingProducts, fetchProducts } = useProducts();
   const { categoryList, fetchCategories } = useCategories();
-  const { addToCart, totalItems } = useCart();
+  const { addToCart, clearCart, totalItems } = useCart();
+  const router = useRouter();
 
   const [search, setSearch] = useState('');
   const [selectedParent, setSelectedParent] = useState<string | null>(null); // top-level category id, null = 'All'
   const [selectedLeaf, setSelectedLeaf] = useState<string | null>(null); // specific category name to filter to
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [showSuccessBanner, setShowSuccessBanner] = useState(false);
 
   useEffect(() => {
     fetchProducts();
     fetchCategories();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // After a successful Paystack payment, Paystack's callback_url sends the
+  // customer back here with ?payment=success. Empty the cart (the order is
+  // already placed) and show a confirmation, then strip the query param so
+  // refreshing the page doesn't re-trigger this.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'success') {
+      clearCart();
+      setShowSuccessBanner(true);
+      router.replace('/store');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -150,7 +167,7 @@ export default function StorefrontPage() {
     <div className="min-h-screen flex flex-col bg-gray-100">
       <header className="sticky top-0 z-40 bg-indigo-900 text-white shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          <span className="text-xl font-extrabold tracking-wide">MEEDEX GADGET STORE</span>
+          <span className="text-xl font-extrabold tracking-wide">MEEDEX STORE</span>
 
           <div className="flex-1 max-w-xl mx-2">
             <input
@@ -176,10 +193,21 @@ export default function StorefrontPage() {
         </div>
       </header>
 
+      {showSuccessBanner && (
+        <div className="bg-emerald-600 text-white px-4 py-3 flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold">
+            ✅ Payment successful! Your order has been placed — check your email for confirmation and details.
+          </p>
+          <button onClick={() => setShowSuccessBanner(false)} className="text-white/80 hover:text-white text-xl leading-none">
+            &times;
+          </button>
+        </div>
+      )}
+
       <section className="bg-gradient-to-r from-indigo-800 to-indigo-600 text-white py-8 px-4 text-center">
         <h2 className="text-2xl md:text-3xl font-extrabold mb-2">Quality Gadgets at Unbeatable Prices</h2>
         <p className="text-indigo-100 text-xs md:text-sm max-w-md mx-auto">
-          Instant online checkout powered by Paystack.
+          Instant online checkout powered by Paystack with live stock availability.
         </p>
       </section>
 
