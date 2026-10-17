@@ -147,7 +147,7 @@ export default function LoginPage() {
 
     setLoading(false);
 
-    router.push(profile?.role === 'Admin' ? '/admin' : '/');
+    router.push(profile?.role === 'Admin' ? '/admin' : '/pos');
   };
 
   // Enable button once user types at least 2 characters in both fields

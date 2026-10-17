@@ -5,12 +5,20 @@ import React, { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { supabase } from '../lib/supabase';
 
-export default function DeviceGuard({ children }: { children: React.ReactNode }) {
+export default function DeviceGuard({
+  children,
+  skip,
+}: {
+  children: React.ReactNode;
+  skip?: boolean;
+}) {
   const pathname = usePathname();
   // The public storefront (customer-facing shopping site) must be reachable
   // by anyone, instantly — device approval is a POS/admin-only concept for
   // staff hardware, not something a shopper should ever hit.
-  const isPublicStorefront = pathname?.startsWith('/store');
+  // `skip` is set by the root layout on meedex.com.ng / www.meedex.com.ng
+  // because those hosts rewrite "/" to the store (pathname stays "/").
+  const isPublicStorefront = skip || pathname?.startsWith('/store');
 
   const [deviceStatus, setDeviceStatus] = useState<'checking' | 'approved' | 'pending' | 'blocked'>('checking');
   const [deviceId, setDeviceId] = useState<string>('');

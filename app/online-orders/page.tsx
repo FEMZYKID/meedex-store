@@ -117,7 +117,7 @@ export default function OnlineOrdersPage() {
           🛒 Online <span className="text-indigo-400">Orders</span>
         </h1>
         <Link
-          href="/"
+          href="/pos"
           className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3.5 py-1.5 rounded-lg text-xs font-bold transition"
         >
           ← Back to Register

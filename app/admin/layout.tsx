@@ -46,7 +46,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       if (profile.role !== 'Admin') {
         alert('Access restricted to Admins only.');
-        router.push('/');
+        router.push('/pos');
         return;
       }
 
@@ -96,7 +96,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
           <div className="flex items-center gap-3">
             <Link
-              href="/"
+              href="/pos"
               className="bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-cyan-500/30 px-4 py-2 rounded-lg text-xs font-semibold transition"
             >
               ← Back to POS Register

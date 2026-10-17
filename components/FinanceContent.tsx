@@ -399,7 +399,7 @@ export default function FinanceContent({ role }: FinanceContentProps) {
         {!isFormOpen ? (
           <>
             <div className="flex justify-between items-center px-4 py-3 border-b border-neutral-800 bg-[#181818] relative">
-              <button onClick={() => router.push('/')} className="text-xl font-bold p-1 hover:text-neutral-400">←</button>
+              <button onClick={() => router.push('/pos')} className="text-xl font-bold p-1 hover:text-neutral-400">←</button>
               <h2 className="text-lg font-bold">Transactions</h2>
               <div className="flex items-center gap-3 text-neutral-400 relative">
                 <button onClick={() => setShowMenuDropdown(!showMenuDropdown)} className="hover:text-white transition p-1">
