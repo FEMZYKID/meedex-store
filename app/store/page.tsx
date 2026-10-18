@@ -167,12 +167,13 @@ export default function StorefrontPage() {
     <div className="min-h-screen flex flex-col bg-gray-100">
       <header className="sticky top-0 z-40 bg-indigo-900 text-white shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <img
+          <div className="flex items-center gap-3">
+           <img
             src="/logo.png"
             alt="MEEDEX Logo"
             className="w-10 h-10 object-contain rounded-xl bg-slate-900 border border-cyan-500/40 p-1"
           />
+        </div>
 
 
           <div className="flex-1 max-w-xl mx-2">
