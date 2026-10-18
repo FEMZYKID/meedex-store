@@ -96,7 +96,7 @@ export default function ComingSoon() {
             backdropFilter: 'blur(8px)',
           }}
         >
-          <Image src="/logo.png" alt={`${CONTENT.brand} logo`} width={80} height={80} priority />
+          <Image src="/logo1.png" alt={`${CONTENT.brand} logo`} width={80} height={80} priority />
         </div>
 
         {/* Badge */}
