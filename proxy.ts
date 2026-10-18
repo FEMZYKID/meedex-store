@@ -58,6 +58,19 @@ export function proxy(request: NextRequest) {
   }
 
   if (CUSTOMER_HOSTS.has(host)) {
+// ----- Maintenance Mode/ cOMING SOON SWTICH -----
+if (process.env.MAINTENANCE_MODE === 'true') {
+  const allowed =
+    pathname.startsWith('/api/webhooks/') ||
+    pathname === '/api/checkout' ||
+    pathname === '/api/health' ||
+    pathname === '/maintenance';
+  if (!allowed) {
+    return NextResponse.rewrite(new URL('/maintenance', request.url));
+  }
+}
+// ----- End Maintenance SWITCH -----
+
     if (pathname === '/' || pathname === '') {
       return NextResponse.rewrite(new URL('/store', request.url));
     }
