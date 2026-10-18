@@ -171,7 +171,7 @@ export default function StorefrontPage() {
            <img
             src="/logo.png"
             alt="MEEDEX Logo"
-            className="w-10 h-10 object-contain rounded-xl bg-slate-900 border border-cyan-500/40 p-1"
+            className="w-25 h-25 object-contain rounded-xl bg-slate-900 border border-cyan-500/40 p-1"
           />
         </div>
 
