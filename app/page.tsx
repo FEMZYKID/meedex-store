@@ -352,7 +352,7 @@ export default function PosPage() {
           category: 'Sales',
           payment_method: paymentMethod,
           notes: item.sku || item.name, // SKU as Note
-          account: 'DEPRINCE',
+          account: 'MEEDEX',
           created_at: new Date().toISOString(),
         }));
 
@@ -499,12 +499,12 @@ export default function PosPage() {
         <div className="flex items-center gap-3">
           <img
             src="/logo.png"
-            alt="DEPRINCE Logo"
+            alt="MEEDEX Logo"
             className="w-10 h-10 object-contain rounded-xl bg-slate-900 border border-cyan-500/40 p-1"
           />
           <div>
             <h1 className="text-lg font-black text-white tracking-wider uppercase">
-              DEPRINCE <span className="text-cyan-400">TECHNOLOGIES</span>
+            MEEDEX <span className="text-cyan-400">GADGETS</span>
             </h1>
             <div className="flex items-center gap-2">
               <p className="text-[10px] text-cyan-400/80 italic tracking-wide">Gadgets. Innovation. Solutions</p>

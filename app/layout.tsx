@@ -6,7 +6,7 @@ import { CartProvider } from '../contexts/CartContext';
 import type { Viewport } from 'next';
 
 export const metadata = {
-  title: 'MEEDEX STORE | Quality Gadgets & Electronics',
+  title: 'MEEDEX GADGETS | Quality Gadgets & Electronics',
   description: 'Home of Quality Gadgets & Electronics',
 };
 
