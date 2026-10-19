@@ -82,7 +82,7 @@ export default function ComingSoon() {
       />
 
       <section className="cs-rise" style={{ position: 'relative', maxWidth: 640, width: '100%' }}>
-        {/* Logo (put your file at public/logo1.png) */}
+        {/* Logo (put your file at public/logo.png) */}
         <div
           style={{
             width: 112,
@@ -96,7 +96,7 @@ export default function ComingSoon() {
             backdropFilter: 'blur(8px)',
           }}
         >
-          <Image src="/logo1.png" alt={`${CONTENT.brand} logo`} width={80} height={80} priority />
+          <Image src="/logo.png" alt={`${CONTENT.brand} logo`} width={80} height={80} priority />
         </div>
 
         {/* Badge */}
