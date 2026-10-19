@@ -82,7 +82,7 @@ export default function ComingSoon() {
       />
 
       <section className="cs-rise" style={{ position: 'relative', maxWidth: 640, width: '100%' }}>
-        {/* Logo (put your file at public/logo.png) */}
+        {/* Logo (put your file at public/logo1.png) */}
         <div
           style={{
             width: 112,
