@@ -2,23 +2,55 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../lib/supabaseAdmin';
 
+type ItemType = 'Full Unit' | 'Adapter' | 'Cable';
+const ITEM_TYPES: ItemType[] = ['Full Unit', 'Adapter', 'Cable'];
+const MAX_LINES = 30;
+const MAX_QTY_PER_LINE = 20;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+interface ProductRow {
+  id: string;
+  unit_price: number | null;
+  adapter_price: number | null;
+  cable_price: number | null;
+  is_splittable: boolean | null;
+  stock_qty: number | null;
+  stock_adapter: number | null;
+  stock_cable: number | null;
+}
+interface Line {
+  product_id: string;
+  item_type: ItemType;
+  quantity: number;
+  price: number;
+}
+
+function unitPriceFor(p: ProductRow, t: ItemType): number | null {
+  if (t === 'Adapter') return p.adapter_price;
+  if (t === 'Cable') return p.cable_price;
+  return p.unit_price;
+}
+function availableFor(p: ProductRow, t: ItemType): number {
+  if (t === 'Adapter') return p.stock_adapter ?? 0;
+  if (t === 'Cable') return p.stock_cable ?? 0;
+  if (p.is_splittable) return Math.min(p.stock_adapter ?? 0, p.stock_cable ?? 0);
+  return p.stock_qty ?? 0;
+}
+
 export async function POST(req: Request) {
   const supabaseAdmin = getSupabaseAdmin();
   let createdOrderId: string | null = null;
 
   try {
-    const {
-      items,
-      email,
-      customerName,
-      customerPhone,
-      deliveryMethod,
-      deliveryZone,
-      address,
-    } = await req.json();
+    const body = await req.json();
+    const { items, email, customerName, customerPhone, deliveryMethod, deliveryZone, address } = body;
 
-    if (!items || items.length === 0 || !email) {
-      return NextResponse.json({ error: 'Missing required cart items or email.' }, { status: 400 });
+    if (!Array.isArray(items) || items.length === 0 || items.length > MAX_LINES) {
+      return NextResponse.json({ error: 'Missing or invalid cart items.' }, { status: 400 });
+    }
+    if (typeof email !== 'string' || !EMAIL_RE.test(email)) {
+      return NextResponse.json({ error: 'A valid email is required.' }, { status: 400 });
     }
     if (!deliveryMethod || !['pickup', 'delivery'].includes(deliveryMethod)) {
       return NextResponse.json({ error: 'Invalid delivery method.' }, { status: 400 });
@@ -27,11 +59,65 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Delivery zone and address are required for delivery.' }, { status: 400 });
     }
 
-    const totalAmount = items.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0);
+    // 1. Validate each line and merge duplicates (same product + type)
+    const wanted = new Map<string, { product_id: string; item_type: ItemType; quantity: number }>();
+    for (const raw of items) {
+      const productId = String(raw?.product_id ?? raw?.id ?? '');
+      const quantity = Number(raw?.quantity);
+      const itemType = (raw?.item_type ?? 'Full Unit') as ItemType;
 
-    // Known flat fees for the two campus zones; "Others" varies by exact
-    // location, so it's left null here and confirmed with the customer
-    // directly after checkout (see CartDrawer's messaging for this).
+      if (!UUID_RE.test(productId)) {
+        return NextResponse.json({ error: 'Invalid product in cart.' }, { status: 400 });
+      }
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_QTY_PER_LINE) {
+        return NextResponse.json({ error: 'Invalid quantity in cart.' }, { status: 400 });
+      }
+      if (!ITEM_TYPES.includes(itemType)) {
+        return NextResponse.json({ error: 'Invalid item type in cart.' }, { status: 400 });
+      }
+      const key = `${productId}|${itemType}`;
+      const existing = wanted.get(key);
+      if (existing) existing.quantity += quantity;
+      else wanted.set(key, { product_id: productId, item_type: itemType, quantity });
+    }
+
+    // 2. Real prices and stock come from the database, never the browser
+    const productIds = Array.from(new Set(Array.from(wanted.values()).map((w) => w.product_id)));
+    const { data: products, error: productsErr } = await supabaseAdmin
+      .from('products')
+      .select('id, unit_price, adapter_price, cable_price, is_splittable, stock_qty, stock_adapter, stock_cable')
+      .in('id', productIds);
+
+    if (productsErr || !products) {
+      console.error('Checkout product lookup failed:', productsErr?.message);
+      return NextResponse.json({ error: 'Could not verify cart items.' }, { status: 500 });
+    }
+
+    const byId = new Map<string, ProductRow>(
+      (products as ProductRow[]).map((p): [string, ProductRow] => [p.id, p])
+    );
+    const lines: Line[] = [];
+
+    for (const w of wanted.values()) {
+      const product = byId.get(w.product_id);
+      if (!product) {
+        return NextResponse.json({ error: 'One or more items are no longer available.' }, { status: 400 });
+      }
+      if (w.item_type !== 'Full Unit' && !product.is_splittable) {
+        return NextResponse.json({ error: 'Invalid item type for a product in your cart.' }, { status: 400 });
+      }
+      const price = unitPriceFor(product, w.item_type);
+      if (price === null || !(Number(price) > 0)) {
+        return NextResponse.json({ error: 'One or more items cannot be purchased right now.' }, { status: 400 });
+      }
+      if (w.quantity > availableFor(product, w.item_type)) {
+        return NextResponse.json({ error: 'One or more items are out of stock or low on stock.' }, { status: 400 });
+      }
+      lines.push({ product_id: w.product_id, item_type: w.item_type, quantity: w.quantity, price: Number(price) });
+    }
+
+    const totalAmount = lines.reduce((sum, l) => sum + l.price * l.quantity, 0);
+
     const DELIVERY_FEES: Record<string, number> = {
       'LASU On-Campus': 400,
       'LASU Off-Campus': 800,
@@ -39,9 +125,7 @@ export async function POST(req: Request) {
     const deliveryFee =
       deliveryMethod === 'delivery' ? DELIVERY_FEES[deliveryZone] ?? null : null;
 
-    // 1. Create the order up front, in 'pending' status — this is the row
-    // the Paystack webhook will later flip to 'paid' and deduct stock
-    // against, once payment is actually confirmed.
+    // 3. Create the pending order
     const { data: order, error: orderErr } = await supabaseAdmin
       .from('orders')
       .insert({
@@ -59,31 +143,29 @@ export async function POST(req: Request) {
       .single();
 
     if (orderErr || !order) {
-      return NextResponse.json({ error: orderErr?.message || 'Could not create order.' }, { status: 500 });
+      console.error('Order insert failed:', orderErr?.message);
+      return NextResponse.json({ error: 'Could not create order.' }, { status: 500 });
     }
     createdOrderId = order.id;
 
-    const orderItemsPayload = items.map((item: any) => ({
-      order_id: order.id,
-      product_id: item.product_id || item.id,
-      quantity: item.quantity,
-      price_at_purchase: item.price ?? item.unit_price ?? 0,
-      item_type: item.item_type || 'Full Unit',
-    }));
-
-    const { error: itemsErr } = await supabaseAdmin.from('order_items').insert(orderItemsPayload);
+    const { error: itemsErr } = await supabaseAdmin.from('order_items').insert(
+      lines.map((l) => ({
+        order_id: order.id,
+        product_id: l.product_id,
+        quantity: l.quantity,
+        price_at_purchase: l.price,
+        item_type: l.item_type,
+      }))
+    );
     if (itemsErr) {
+      console.error('Order items insert failed:', itemsErr.message);
       await supabaseAdmin.from('orders').delete().eq('id', order.id);
-      return NextResponse.json({ error: itemsErr.message }, { status: 500 });
+      return NextResponse.json({ error: 'Could not create order.' }, { status: 500 });
     }
 
-    // 2. Initialize the Paystack transaction, carrying the order id so the
-    // webhook knows exactly which order to reconcile on payment success.
-    // Known delivery fees (On-Campus/Off-Campus) are charged upfront as
-    // part of this payment; "Others" has no fixed fee, so only the product
-    // subtotal is charged there and the fee is confirmed separately.
+    // 4. Start the Paystack payment with the server-calculated amount
     const amountToCharge = totalAmount + (deliveryFee || 0);
-    const amountInKobo = amountToCharge * 100;
+    const amountInKobo = Math.round(amountToCharge * 100);
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
     const response = await fetch('https://api.paystack.co/transaction/initialize', {
@@ -110,12 +192,13 @@ export async function POST(req: Request) {
     const data = await response.json();
 
     if (!data.status) {
+      console.error('Paystack init failed:', data.message);
       await supabaseAdmin.from('orders').delete().eq('id', order.id);
-      return NextResponse.json({ error: data.message || 'Paystack initialization failed.' }, { status: 400 });
+      return NextResponse.json({ error: 'Payment could not be started. Please try again.' }, { status: 400 });
     }
 
     return NextResponse.json({ authorization_url: data.data.authorization_url });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Checkout error:', error);
     if (createdOrderId) {
       await supabaseAdmin.from('orders').delete().eq('id', createdOrderId);

@@ -31,6 +31,6 @@ export const PICKUP_WINDOW_NOTE = 'within 3 working days, between 9:00 AM and 6:
 // EDIT ME: your real support contact details.
 // SUPPORT_WHATSAPP must be digits only, country code first, no + or spaces
 // (e.g. Nigeria number 0801 234 5678 becomes "2348012345678").
-export const SUPPORT_PHONE = '+234 800 000 0000';
-export const SUPPORT_WHATSAPP = '2348000000000';
-export const SUPPORT_EMAIL = 'support@meedexstore.com';
+export const SUPPORT_PHONE = '+234 906 791 1723';
+export const SUPPORT_WHATSAPP = '2349067911723';
+export const SUPPORT_EMAIL = 'meedexgadgets1@gmail.com';
