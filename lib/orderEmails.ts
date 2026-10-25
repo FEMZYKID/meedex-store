@@ -104,7 +104,7 @@ function orderDetails(order: OrderForEmail, items: OrderItemForEmail[]) {
         <td style="padding:8px 0;font-weight:bold;">Total paid</td>
         <td style="padding:8px 0;text-align:right;font-weight:bold;">${naira(total)}</td>
       </tr>
-    </table>`;
+    </table>
     ${feeNote}`; 
 }
 
