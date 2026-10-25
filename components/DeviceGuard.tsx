@@ -145,7 +145,7 @@ export default function DeviceGuard({
           </h1>
           <p className="text-xs text-slate-300 leading-relaxed">
             This device <strong className="text-white">({deviceName})</strong> is currently{' '}
-            <span className="text-amber-400 font-bold uppercase">{deviceStatus}</span> for DEPRINCE POS.
+            <span className="text-amber-400 font-bold uppercase">{deviceStatus}</span> for MEEDEX POS.
           </p>
 
           <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-left text-[11px] space-y-1 font-mono">

@@ -9,6 +9,7 @@ import { buildCategoryTree, buildLeafOrder } from '../../lib/categoryTree';
 import CartDrawer from '../../components/CartDrawer';
 import SupportWidget from '../../components/SupportWidget';
 import type { Product } from '../../types';
+import DeveloperCredit from '../../components/DeveloperCredit';
 
 function ProductCard({ product, onAdd }: { product: Product; onAdd: (p: Product, opts?: any) => void }) {
   if (product.is_splittable) {
@@ -305,6 +306,7 @@ export default function StorefrontPage() {
 
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
       <SupportWidget />
+      <DeveloperCredit/>
     </div>
   );
 }

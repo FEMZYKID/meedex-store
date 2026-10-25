@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import DeveloperCredit from '../../components/DeveloperCredit';
 
 export const metadata = {
   title: 'MEEDEX GADGETS | Coming Soon',
@@ -205,6 +206,7 @@ export default function ComingSoon() {
         <p style={{ marginTop: 40, fontSize: 13, opacity: 0.6 }}>
           &copy; {new Date().getFullYear()} {CONTENT.brand}
         </p>
+        <DeveloperCredit onDark/>
       </section>
     </main>
   );

@@ -5,7 +5,7 @@
 // rather than hunting through components; every file that needs these
 // imports from this one.
 
-export const STORE_PICKUP_ADDRESS = 'Along PPL Street, LASU';
+export const STORE_PICKUP_ADDRESS = '22, Jagun Street, PPL, Ojo, Lagos. (LASU)';
 
 export const DELIVERY_ZONES = ['LASU On-Campus', 'LASU Off-Campus', 'Others'] as const;
 export type DeliveryZone = (typeof DELIVERY_ZONES)[number];
@@ -24,7 +24,7 @@ export const DELIVERY_TIMEFRAMES: Partial<Record<DeliveryZone, string>> = {
   'LASU On-Campus': '1–2 hours after your order is confirmed',
   'LASU Off-Campus': '1–4 hours after your order is confirmed',
 };
-export const DEFAULT_DELIVERY_TIMEFRAME_NOTE = 'We\u2019ll confirm the expected delivery time with you directly.';
+export const DEFAULT_DELIVERY_TIMEFRAME_NOTE = 'We\u2019ll confirm the expected delivery time with you directly via Whatsapp or Mail.';
 
 export const PICKUP_WINDOW_NOTE = 'within 3 working days, between 9:00 AM and 6:00 PM';
 
@@ -33,4 +33,4 @@ export const PICKUP_WINDOW_NOTE = 'within 3 working days, between 9:00 AM and 6:
 // (e.g. Nigeria number 0801 234 5678 becomes "2348012345678").
 export const SUPPORT_PHONE = '+234 906 791 1723';
 export const SUPPORT_WHATSAPP = '2349067911723';
-export const SUPPORT_EMAIL = 'meedexgadgets1@gmail.com';
+export const SUPPORT_EMAIL = 'support@meedex.com.ng';
