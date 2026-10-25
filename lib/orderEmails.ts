@@ -104,7 +104,8 @@ function orderDetails(order: OrderForEmail, items: OrderItemForEmail[]) {
         <td style="padding:8px 0;font-weight:bold;">Total paid</td>
         <td style="padding:8px 0;text-align:right;font-weight:bold;">${naira(total)}</td>
       </tr>
-    </table>`;${feeNote}
+    </table>`;
+    ${feeNote}`; 
 }
 
 export function buildOrderEmail(stage: OrderEmailStage, order: OrderForEmail, items: OrderItemForEmail[]) {
@@ -117,7 +118,7 @@ export function buildOrderEmail(stage: OrderEmailStage, order: OrderForEmail, it
   switch (stage) {
     case 'processing':
       return {
-        subject: 'We received your order — Meedex Store',
+        subject: 'We received your order — Meedex Gadgets',
         html: shell(
           'Your order is being processed',
           `<p style="font-size:14px;">Hi ${name}, thanks for your order! Payment was successful and we\u2019re now processing it. You\u2019ll get another email once it\u2019s confirmed.</p>${details}`
