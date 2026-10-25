@@ -8,12 +8,15 @@ export default function SupportWidget() {
 
   return (
     <>
+     
       <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-5 right-5 z-40 bg-indigo-900 hover:bg-indigo-800 text-white font-bold px-4 py-3 rounded-full shadow-lg flex items-center gap-2 text-sm transition"
-      >
-        💬 Need Help?
-      </button>
+  onClick={() => setIsOpen(true)}
+  aria-label="Need help? Contact us"
+  className="fixed bottom-5 right-5 z-40 bg-indigo-900 hover:bg-indigo-800 text-white font-bold w-12 h-12 sm:w-auto sm:h-auto sm:px-4 sm:py-3 rounded-full shadow-lg flex items-center justify-center gap-2 text-sm transition"
+>
+  <span aria-hidden="true">💬</span>
+  <span className="hidden sm:inline">Need Help?</span>
+</button>
 
       {isOpen && (
         <div

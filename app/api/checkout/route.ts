@@ -1,6 +1,12 @@
 // app/api/checkout/route.ts
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../lib/supabaseAdmin';
+import {
+  STORE_PICKUP_ADDRESS,
+  DELIVERY_ZONES,
+  DELIVERY_FEES,
+  type DeliveryZone,
+} from '../../../lib/storeConfig';
 
 type ItemType = 'Full Unit' | 'Adapter' | 'Cable';
 const ITEM_TYPES: ItemType[] = ['Full Unit', 'Adapter', 'Cable'];
@@ -19,6 +25,7 @@ interface ProductRow {
   stock_adapter: number | null;
   stock_cable: number | null;
 }
+
 interface Line {
   product_id: string;
   item_type: ItemType;
@@ -26,11 +33,14 @@ interface Line {
   price: number;
 }
 
+const clean = (v: unknown, max: number) => String(v ?? '').trim().slice(0, max);
+
 function unitPriceFor(p: ProductRow, t: ItemType): number | null {
   if (t === 'Adapter') return p.adapter_price;
   if (t === 'Cable') return p.cable_price;
   return p.unit_price;
 }
+
 function availableFor(p: ProductRow, t: ItemType): number {
   if (t === 'Adapter') return p.stock_adapter ?? 0;
   if (t === 'Cable') return p.stock_cable ?? 0;
@@ -44,19 +54,34 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { items, email, customerName, customerPhone, deliveryMethod, deliveryZone, address } = body;
+    const { items, deliveryMethod } = body;
+
+    // Length-limited, trimmed copies of everything the customer types
+    const safeEmail = clean(body.email, 254);
+    const safeName = clean(body.customerName, 100);
+    const safePhone = clean(body.customerPhone, 20);
+    const safeZone = clean(body.deliveryZone, 50);
+    const safeAddress = clean(body.address, 300);
 
     if (!Array.isArray(items) || items.length === 0 || items.length > MAX_LINES) {
       return NextResponse.json({ error: 'Missing or invalid cart items.' }, { status: 400 });
     }
-    if (typeof email !== 'string' || !EMAIL_RE.test(email)) {
+    if (!EMAIL_RE.test(safeEmail)) {
       return NextResponse.json({ error: 'A valid email is required.' }, { status: 400 });
+    }
+    if (!safeName || !safePhone) {
+      return NextResponse.json({ error: 'Name and phone number are required.' }, { status: 400 });
     }
     if (!deliveryMethod || !['pickup', 'delivery'].includes(deliveryMethod)) {
       return NextResponse.json({ error: 'Invalid delivery method.' }, { status: 400 });
     }
-    if (deliveryMethod === 'delivery' && (!deliveryZone || !address)) {
-      return NextResponse.json({ error: 'Delivery zone and address are required for delivery.' }, { status: 400 });
+    if (deliveryMethod === 'delivery') {
+      if (!(DELIVERY_ZONES as readonly string[]).includes(safeZone)) {
+        return NextResponse.json({ error: 'Invalid delivery zone.' }, { status: 400 });
+      }
+      if (!safeAddress) {
+        return NextResponse.json({ error: 'Delivery address is required for delivery.' }, { status: 400 });
+      }
     }
 
     // 1. Validate each line and merge duplicates (same product + type)
@@ -118,12 +143,14 @@ export async function POST(req: Request) {
 
     const totalAmount = lines.reduce((sum, l) => sum + l.price * l.quantity, 0);
 
-    const DELIVERY_FEES: Record<string, number> = {
-      'LASU On-Campus': 400,
-      'LASU Off-Campus': 800,
-    };
+    // Delivery fee comes from lib/storeConfig (null for zones like "Others")
     const deliveryFee =
-      deliveryMethod === 'delivery' ? DELIVERY_FEES[deliveryZone] ?? null : null;
+      deliveryMethod === 'delivery'
+        ? DELIVERY_FEES[safeZone as DeliveryZone] ?? null
+        : null;
+
+    const finalZone = deliveryMethod === 'delivery' ? safeZone : null;
+    const finalAddress = deliveryMethod === 'pickup' ? STORE_PICKUP_ADDRESS : safeAddress;
 
     // 3. Create the pending order
     const { data: order, error: orderErr } = await supabaseAdmin
@@ -131,13 +158,13 @@ export async function POST(req: Request) {
       .insert({
         total_amount: totalAmount,
         status: 'pending',
-        customer_name: customerName || null,
-        customer_email: email,
-        customer_phone: customerPhone || null,
+        customer_name: safeName,
+        customer_email: safeEmail,
+        customer_phone: safePhone,
         delivery_method: deliveryMethod,
-        delivery_zone: deliveryMethod === 'delivery' ? deliveryZone : null,
+        delivery_zone: finalZone,
         delivery_fee: deliveryFee,
-        shipping_address: address || null,
+        shipping_address: finalAddress,
       })
       .select('id')
       .single();
@@ -175,15 +202,15 @@ export async function POST(req: Request) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        email,
+        email: safeEmail,
         amount: amountInKobo,
         callback_url: `${siteUrl}/store?payment=success`,
         metadata: {
           order_id: order.id,
-          customer_name: customerName,
-          customer_phone: customerPhone,
+          customer_name: safeName,
+          customer_phone: safePhone,
           delivery_method: deliveryMethod,
-          delivery_zone: deliveryZone || null,
+          delivery_zone: finalZone,
           delivery_fee: deliveryFee,
         },
       }),

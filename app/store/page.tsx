@@ -172,7 +172,7 @@ export default function StorefrontPage() {
            <img
             src="/logo.png"
             alt="MEEDEX Logo"
-            className="w-20 h-20 object-contain rounded-xl bg-slate-900 border border-cyan-500/40 p-1"
+            className="w-15 h-15 object-contain rounded-xl bg-slate-900 border border-cyan-500/40 p-1"
           />
         </div>
 
@@ -212,12 +212,14 @@ export default function StorefrontPage() {
         </div>
       )}
 
-      <section className="bg-gradient-to-r from-indigo-800 to-indigo-600 text-white py-8 px-4 text-center">
-        <h2 className="text-2xl md:text-3xl font-extrabold mb-2">Quality Gadgets at Unbeatable Prices</h2>
-        <p className="text-indigo-100 text-xs md:text-sm max-w-md mx-auto">
-          Instant online checkout powered by Paystack with live stock availability.
-        </p>
-      </section>
+      <section className="bg-slate-900 border-t-2 border-amber-500 text-white py-8 px-4 text-center">
+  <h2 className="text-2xl md:text-3xl font-extrabold mb-2">
+    Quality Gadgets at <span className="text-amber-400">Unbeatable Prices</span>
+  </h2>
+  <p className="text-slate-300 text-xs md:text-sm max-w-md mx-auto">
+    Instant online checkout powered by Paystack with live stock availability.
+  </p>
+</section>
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
         {/* Top-level category chips */}
@@ -306,7 +308,7 @@ export default function StorefrontPage() {
 
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
       <SupportWidget />
-      <DeveloperCredit/>
+      <DeveloperCredit clearFloating />
     </div>
   );
 }
