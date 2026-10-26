@@ -6,13 +6,13 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '../lib/supabase';
-import CategoryFilterBar from '../components/CategoryFilterBar';
+import CategoryBrowserBar from '../components/CategoryBrowserBar';
 import ReturnItemModal from '../components/ReturnItemModal';
 import ReceiptFlow from '../components/ReceiptFlow';
-import { filterAndSortProducts, buildCategoryPillList } from '../lib/categories';
 import { getAvailableStock } from '../lib/stock';
 import { useProducts } from '../hooks/useProducts';
 import { useCategories } from '../hooks/useCategories';
+import { useCategoryBrowser } from '../hooks/useCategoryBrowser';
 import type { Product, CartItem, SaleItem, Sale, CurrentUser } from '../types';
 
 export default function PosPage() {
@@ -21,9 +21,7 @@ export default function PosPage() {
 
   const { products, setProducts, loadingProducts, fetchProducts } = useProducts();
   const { categoryList, fetchCategories } = useCategories();
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const browser = useCategoryBrowser(products, categoryList);
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Transfer' | 'POS Card'>('Cash');
@@ -201,10 +199,6 @@ export default function PosPage() {
     await supabase.auth.signOut();
     router.push('/login');
   };
-
-  const categories = buildCategoryPillList(categoryList, products);
-
-  const filteredProducts = filterAndSortProducts(products, categoryList, selectedCategory, searchQuery);
 
   const addToCart = (product: Product, type: 'Full Unit' | 'Adapter' | 'Cable') => {
     const available = getAvailableStock(product, type);
@@ -491,6 +485,97 @@ export default function PosPage() {
   const selectedReturnItem = saleItems.find((i) => i.id === selectedReturnItemId);
   const calculatedRefund = selectedReturnItem ? selectedReturnItem.unit_price * returnQty : 0;
 
+  const renderProductCard = (product: Product) => {
+    const fullAvailable = getAvailableStock(product, 'Full Unit');
+    const adapterAvailable = getAvailableStock(product, 'Adapter');
+    const cableAvailable = getAvailableStock(product, 'Cable');
+
+    return (
+      <div
+        key={product.id}
+        className="bg-slate-800 border border-slate-700/80 rounded-2xl p-3.5 flex flex-col justify-between hover:border-slate-600 transition shadow-lg"
+      >
+        <div>
+          {product.image_url ? (
+            <img
+              src={product.image_url}
+              alt={product.name}
+              className="w-full h-28 object-cover rounded-xl border border-slate-700 mb-2"
+            />
+          ) : (
+            <div className="w-full h-28 bg-slate-900 rounded-xl flex items-center justify-center text-slate-600 border border-slate-800 mb-2 text-2xl">
+              🔌
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[10px] bg-slate-900 text-cyan-400 border border-slate-700 px-2 py-0.5 rounded font-medium truncate">
+              {product.category || 'General'}
+            </span>
+            <span className="text-[10px] text-slate-400 font-mono">
+              {product.is_splittable ? (
+                <>
+                  A:<span className={(product.stock_adapter || 0) <= 5 ? 'text-rose-400 font-bold' : ''}>{product.stock_adapter || 0}</span> |{' '}
+                  C:<span className={(product.stock_cable || 0) <= 5 ? 'text-rose-400 font-bold' : ''}>{product.stock_cable || 0}</span>
+                </>
+              ) : (
+                <>Stock: <span className={(product.stock_qty || 0) <= 5 ? 'text-rose-400 font-bold' : ''}>{product.stock_qty || 0}</span></>
+              )}
+            </span>
+          </div>
+          <h3 className="font-bold text-white text-xs mt-1 line-clamp-1">{product.name}</h3>
+          <p className="text-[10px] text-slate-400 font-mono">SKU: {product.sku || 'N/A'}</p>
+          <p className="text-sm font-black text-emerald-400 mt-1">
+            ₦{Number(product.unit_price).toLocaleString()}
+          </p>
+        </div>
+
+        <div className="mt-3 space-y-1.5">
+          {fullAvailable > 0 ? (
+            <button
+              onClick={() => addToCart(product, 'Full Unit')}
+              className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold py-1.5 rounded-lg text-xs transition cursor-pointer"
+            >
+              + Add Full
+            </button>
+          ) : (
+            <div className="w-full bg-slate-900 text-rose-400 border border-rose-500/30 font-bold py-1.5 rounded-lg text-xs text-center">
+              Out of Stock
+            </div>
+          )}
+
+          {product.is_splittable && (
+            <div className="grid grid-cols-2 gap-1.5">
+              {adapterAvailable > 0 ? (
+                <button
+                  onClick={() => addToCart(product, 'Adapter')}
+                  className="bg-slate-900 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 py-1 rounded text-[10px] font-semibold transition cursor-pointer"
+                >
+                  Adapter (₦{Number(product.adapter_price || 0).toLocaleString()})
+                </button>
+              ) : (
+                <div className="bg-slate-900 text-rose-400 border border-rose-500/30 py-1 rounded text-[10px] font-semibold text-center">
+                  Out of Stock
+                </div>
+              )}
+              {cableAvailable > 0 ? (
+                <button
+                  onClick={() => addToCart(product, 'Cable')}
+                  className="bg-slate-900 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 py-1 rounded text-[10px] font-semibold transition cursor-pointer"
+                >
+                  Cable (₦{Number(product.cable_price || 0).toLocaleString()})
+                </button>
+              ) : (
+                <div className="bg-slate-900 text-rose-400 border border-rose-500/30 py-1 rounded text-[10px] font-semibold text-center">
+                  Out of Stock
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   if (!currentUser) return null;
 
   return (
@@ -504,7 +589,7 @@ export default function PosPage() {
           />
           <div>
             <h1 className="text-lg font-black text-white tracking-wider uppercase">
-            MEEDEX <span className="text-cyan-400">GADGETS</span>
+              MEEDEX <span className="text-cyan-400">GADGETS</span>
             </h1>
             <div className="flex items-center gap-2">
               <p className="text-[10px] text-cyan-400/80 italic tracking-wide">Gadgets. Innovation. Solutions</p>
@@ -554,112 +639,27 @@ export default function PosPage() {
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 p-6">
         <div className="lg:col-span-2 flex flex-col gap-6">
-          <CategoryFilterBar
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            categories={categories}
-            selectedCategory={selectedCategory}
-            onSelectCategory={setSelectedCategory}
-          />
+          <CategoryBrowserBar browser={browser} variant="dark" showSearch />
 
           {loadingProducts ? (
             <div className="p-8 text-center text-slate-400 bg-slate-800 rounded-2xl">Loading items...</div>
-          ) : filteredProducts.length === 0 ? (
+          ) : browser.sections.length === 0 ? (
             <div className="p-12 text-center text-slate-500 bg-slate-800/50 rounded-2xl border border-slate-800">
               No products found matching your search.
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {filteredProducts.map((product) => {
-                const fullAvailable = getAvailableStock(product, 'Full Unit');
-                const adapterAvailable = getAvailableStock(product, 'Adapter');
-                const cableAvailable = getAvailableStock(product, 'Cable');
-
-                return (
-                <div
-                  key={product.id}
-                  className="bg-slate-800 border border-slate-700/80 rounded-2xl p-3.5 flex flex-col justify-between hover:border-slate-600 transition shadow-lg"
-                >
-                  <div>
-                    {product.image_url ? (
-                      <img
-                        src={product.image_url}
-                        alt={product.name}
-                        className="w-full h-28 object-cover rounded-xl border border-slate-700 mb-2"
-                      />
-                    ) : (
-                      <div className="w-full h-28 bg-slate-900 rounded-xl flex items-center justify-center text-slate-600 border border-slate-800 mb-2 text-2xl">
-                        🔌
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-[10px] bg-slate-900 text-cyan-400 border border-slate-700 px-2 py-0.5 rounded font-medium truncate">
-                        {product.category || 'General'}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {product.is_splittable ? (
-                          <>
-                            A:<span className={(product.stock_adapter || 0) <= 5 ? "text-rose-400 font-bold" : ""}>{product.stock_adapter || 0}</span> | 
-                            C:<span className={(product.stock_cable || 0) <= 5 ? "text-rose-400 font-bold" : ""}>{product.stock_cable || 0}</span>
-                          </>
-                        ) : (
-                          <>Stock: <span className={(product.stock_qty || 0) <= 5 ? "text-rose-400 font-bold" : ""}>{product.stock_qty || 0}</span></>
-                        )}
-                      </span>
-                    </div>
-                    <h3 className="font-bold text-white text-xs mt-1 line-clamp-1">{product.name}</h3>
-                    <p className="text-[10px] text-slate-400 font-mono">SKU: {product.sku || 'N/A'}</p>
-                    <p className="text-sm font-black text-emerald-400 mt-1">
-                      ₦{Number(product.unit_price).toLocaleString()}
-                    </p>
-                  </div>
-
-                  <div className="mt-3 space-y-1.5">
-                    {fullAvailable > 0 ? (
-                      <button
-                        onClick={() => addToCart(product, 'Full Unit')}
-                        className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold py-1.5 rounded-lg text-xs transition cursor-pointer"
-                      >
-                        + Add Full
-                      </button>
-                    ) : (
-                      <div className="w-full bg-slate-900 text-rose-400 border border-rose-500/30 font-bold py-1.5 rounded-lg text-xs text-center">
-                        Out of Stock
-                      </div>
-                    )}
-
-                    {product.is_splittable && (
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {adapterAvailable > 0 ? (
-                          <button
-                            onClick={() => addToCart(product, 'Adapter')}
-                            className="bg-slate-900 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 py-1 rounded text-[10px] font-semibold transition cursor-pointer"
-                          >
-                            Adapter (₦{Number(product.adapter_price || 0).toLocaleString()})
-                          </button>
-                        ) : (
-                          <div className="bg-slate-900 text-rose-400 border border-rose-500/30 py-1 rounded text-[10px] font-semibold text-center">
-                            Out of Stock
-                          </div>
-                        )}
-                        {cableAvailable > 0 ? (
-                          <button
-                            onClick={() => addToCart(product, 'Cable')}
-                            className="bg-slate-900 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 py-1 rounded text-[10px] font-semibold transition cursor-pointer"
-                          >
-                            Cable (₦{Number(product.cable_price || 0).toLocaleString()})
-                          </button>
-                        ) : (
-                          <div className="bg-slate-900 text-rose-400 border border-rose-500/30 py-1 rounded text-[10px] font-semibold text-center">
-                            Out of Stock
-                          </div>
-                        )}
-                      </div>
-                    )}
+            <div className="space-y-6">
+              {browser.sections.map((section) => (
+                <div key={section.key}>
+                  <h2 className="text-xs font-bold text-cyan-400 uppercase tracking-wider mb-3 pb-1 border-b border-slate-700 inline-block">
+                    {section.name}{' '}
+                    <span className="text-slate-500 font-normal">({section.items.length})</span>
+                  </h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {section.items.map((product) => renderProductCard(product))}
                   </div>
                 </div>
-                );
-              })}
+              ))}
             </div>
           )}
 

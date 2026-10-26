@@ -1,16 +1,18 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProducts } from '../../hooks/useProducts';
 import { useCategories } from '../../hooks/useCategories';
+import { useCategoryBrowser } from '../../hooks/useCategoryBrowser';
 import { useCart } from '../../contexts/CartContext';
-import { buildCategoryTree, buildLeafOrder } from '../../lib/categoryTree';
 import CartDrawer from '../../components/CartDrawer';
 import SupportWidget from '../../components/SupportWidget';
-import type { Product } from '../../types';
+import CategoryBrowserBar from '../../components/CategoryBrowserBar';
 import DeveloperCredit from '../../components/DeveloperCredit';
+import type { Product } from '../../types';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function ProductCard({ product, onAdd }: { product: Product; onAdd: (p: Product, opts?: any) => void }) {
   if (product.is_splittable) {
     const adapterStock = product.stock_adapter ?? 0;
@@ -28,6 +30,7 @@ function ProductCard({ product, onAdd }: { product: Product; onAdd: (p: Product,
         <div className="p-3">
           <div className="w-full h-36 bg-gray-100 rounded flex items-center justify-center overflow-hidden mb-3">
             {product.image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={product.image_url} alt={product.name} className="object-cover h-full w-full" />
             ) : (
               <span className="text-gray-400 text-xs">No Image</span>
@@ -67,6 +70,7 @@ function ProductCard({ product, onAdd }: { product: Product; onAdd: (p: Product,
       <div className="p-3">
         <div className="w-full h-36 bg-gray-100 rounded flex items-center justify-center overflow-hidden mb-3">
           {product.image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img src={product.image_url} alt={product.name} className="object-cover h-full w-full" />
           ) : (
             <span className="text-gray-400 text-xs">No Image</span>
@@ -98,9 +102,8 @@ export default function StorefrontPage() {
   const { addToCart, clearCart, totalItems } = useCart();
   const router = useRouter();
 
-  const [search, setSearch] = useState('');
-  const [selectedParent, setSelectedParent] = useState<string | null>(null); // top-level category id, null = 'All'
-  const [selectedLeaf, setSelectedLeaf] = useState<string | null>(null); // specific category name to filter to
+  const browser = useCategoryBrowser(products, categoryList);
+
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
 
@@ -124,65 +127,25 @@ export default function StorefrontPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const categoryTree = useMemo(() => buildCategoryTree(categoryList), [categoryList]);
-  const leafOrder = useMemo(() => buildLeafOrder(categoryList), [categoryList]);
-  const activeParent = categoryTree.find((p) => p.id === selectedParent) || null;
-
-  const searchFiltered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return products;
-    return products.filter((p) => p.name.toLowerCase().includes(query) || (p.sku || '').toLowerCase().includes(query));
-  }, [products, search]);
-
-  // Sections: one per leaf category, in admin-defined order, each holding
-  // just the products tagged with that exact category name. Empty
-  // categories are skipped so we never render a heading with nothing under it.
-  const sections = useMemo(() => {
-    let leaves = leafOrder;
-    if (selectedLeaf) {
-      leaves = leaves.filter((l) => l.name === selectedLeaf);
-    } else if (activeParent) {
-      leaves = activeParent.children.length > 0 ? activeParent.children : [activeParent];
-    }
-
-    const known = new Set(leaves.map((l) => l.name.toLowerCase()));
-    const result = leaves
-      .map((leaf) => ({
-        name: leaf.name,
-        items: searchFiltered.filter((p) => (p.category || '').toLowerCase() === leaf.name.toLowerCase()),
-      }))
-      .filter((s) => s.items.length > 0);
-
-    // Products whose category isn't in the managed list at all (e.g. set
-    // directly in the DB) shouldn't just vanish — group them at the end
-    // under "Other", but only when browsing everything unfiltered.
-    if (!selectedLeaf && !activeParent) {
-      const uncategorized = searchFiltered.filter((p) => !known.has((p.category || '').toLowerCase()));
-      if (uncategorized.length > 0) result.push({ name: 'Other', items: uncategorized });
-    }
-
-    return result;
-  }, [leafOrder, selectedLeaf, activeParent, searchFiltered]);
-
   return (
     <div className="min-h-screen flex flex-col bg-gray-100">
       <header className="sticky top-0 z-40 bg-indigo-900 text-white shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-           <img
-            src="/logo.png"
-            alt="MEEDEX Logo"
-            className="w-15 h-15 object-contain rounded-xl bg-slate-900 border border-cyan-500/40 p-1"
-          />
-        </div>
-
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo.png"
+              alt="MEEDEX Logo"
+              className="w-15 h-15 object-contain rounded-xl bg-slate-900 border border-cyan-500/40 p-1"
+            />
+          </div>
 
           <div className="flex-1 max-w-xl mx-2">
             <input
               type="text"
               placeholder="Search products, brands, categories..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={browser.search}
+              onChange={(e) => browser.setSearch(e.target.value)}
               className="w-full px-4 py-2 text-gray-900 rounded-md focus:outline-none bg-white text-sm"
             />
           </div>
@@ -213,84 +176,26 @@ export default function StorefrontPage() {
       )}
 
       <section className="bg-slate-900 border-t-2 border-amber-500 text-white py-8 px-4 text-center">
-  <h2 className="text-2xl md:text-3xl font-extrabold mb-2">
-    Quality Gadgets at <span className="text-amber-400">Unbeatable Prices</span>
-  </h2>
-  <p className="text-slate-300 text-xs md:text-sm max-w-md mx-auto">
-    Instant online checkout powered by Paystack with live stock availability.
-  </p>
-</section>
+        <h2 className="text-2xl md:text-3xl font-extrabold mb-2">
+          Quality Gadgets at <span className="text-amber-400">Unbeatable Prices</span>
+        </h2>
+        <p className="text-slate-300 text-xs md:text-sm max-w-md mx-auto">
+          Instant online checkout powered by Paystack with live stock availability.
+        </p>
+      </section>
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
-        {/* Top-level category chips */}
-        <div className="flex gap-2 overflow-x-auto pb-3 border-b border-gray-200">
-          <button
-            onClick={() => {
-              setSelectedParent(null);
-              setSelectedLeaf(null);
-            }}
-            className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition ${
-              !selectedParent && !selectedLeaf
-                ? 'bg-amber-500 text-slate-900 shadow-sm'
-                : 'bg-white text-gray-700 hover:bg-gray-200 border'
-            }`}
-          >
-            All
-          </button>
-          {categoryTree.map((parent) => (
-            <button
-              key={parent.id}
-              onClick={() => {
-                setSelectedParent(parent.id);
-                setSelectedLeaf(parent.children.length > 0 ? null : parent.name);
-              }}
-              className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition ${
-                selectedParent === parent.id
-                  ? 'bg-amber-500 text-slate-900 shadow-sm'
-                  : 'bg-white text-gray-700 hover:bg-gray-200 border'
-              }`}
-            >
-              {parent.name}
-            </button>
-          ))}
-        </div>
-
-        {/* Subcategory chips — only when a parent with children is active */}
-        {activeParent && activeParent.children.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pt-3 pb-4 mb-2">
-            <button
-              onClick={() => setSelectedLeaf(null)}
-              className={`px-3 py-1.5 rounded-full text-[11px] font-medium whitespace-nowrap transition ${
-                !selectedLeaf ? 'bg-indigo-800 text-white' : 'bg-indigo-50 text-indigo-800 hover:bg-indigo-100'
-              }`}
-            >
-              All {activeParent.name}
-            </button>
-            {activeParent.children.map((child) => (
-              <button
-                key={child.id}
-                onClick={() => setSelectedLeaf(child.name)}
-                className={`px-3 py-1.5 rounded-full text-[11px] font-medium whitespace-nowrap transition ${
-                  selectedLeaf === child.name
-                    ? 'bg-indigo-800 text-white'
-                    : 'bg-indigo-50 text-indigo-800 hover:bg-indigo-100'
-                }`}
-              >
-                {child.name}
-              </button>
-            ))}
-          </div>
-        )}
+        <CategoryBrowserBar browser={browser} variant="store" />
 
         <div className="mt-4">
           {loadingProducts ? (
             <div className="text-center py-20 text-gray-500 font-medium">Loading catalog...</div>
-          ) : sections.length === 0 ? (
+          ) : browser.sections.length === 0 ? (
             <div className="text-center py-20 text-gray-500 font-medium">No products found.</div>
           ) : (
             <div className="space-y-10">
-              {sections.map((section) => (
-                <div key={section.name}>
+              {browser.sections.map((section) => (
+                <div key={section.key}>
                   <h2 className="text-lg font-bold text-gray-800 mb-3 pb-2 border-b-2 border-amber-500 inline-block">
                     {section.name}
                   </h2>

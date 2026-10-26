@@ -3,18 +3,19 @@
 import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../../../lib/supabase';
 import ImageUploader from '@/components/ImageUploader';
-import CategoryFilterBar from '@/components/CategoryFilterBar';
+import CategoryBrowserBar from '@/components/CategoryBrowserBar';
 import CategoryRow from '@/components/CategoryRow';
 import { generateSKU } from '../../../lib/sku';
-import { filterAndSortProducts } from '../../../lib/categories';
-import { buildCategoryTree } from '../../../lib/categoryTree';
 import { useProducts } from '../../../hooks/useProducts';
 import { useCategories } from '../../../hooks/useCategories';
+import { useCategoryBrowser } from '../../../hooks/useCategoryBrowser';
 import type { Product, Category } from '../../../types';
 
 export default function AdminProductsPage() {
   const { products, loadingProducts, fetchProducts } = useProducts();
   const { categoryList, loadingCategories, fetchCategories } = useCategories();
+  const browser = useCategoryBrowser(products, categoryList);
+  const categoryTree = browser.tree;
 
   useEffect(() => {
     fetchProducts();
@@ -37,9 +38,6 @@ export default function AdminProductsPage() {
     stock_qty: '0',
     image_url: '',
   });
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
 
   const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
   const [newCategoryInput, setNewCategoryInput] = useState('');
@@ -263,17 +261,84 @@ export default function AdminProductsPage() {
     else await fetchProducts();
   };
 
-  const categoryPillNames = useMemo(() => ['All', ...categoryList.map((c) => c.name)], [categoryList]);
-  const categoryTree = useMemo(() => buildCategoryTree(categoryList), [categoryList]);
   // Only top-level categories can be picked as a parent — a category that
   // is itself already a child can't have children of its own, which keeps
   // the hierarchy to two levels, never three. A single parent can still
   // have as many children as you like.
   const possibleParents = useMemo(() => categoryList.filter((c) => !c.parent_id), [categoryList]);
 
-  const filteredProducts = useMemo(() => {
-    return filterAndSortProducts(products, categoryList, selectedCategory, searchQuery);
-  }, [products, selectedCategory, searchQuery, categoryList]);
+  // Categories a product may be filed under: subcategories, plus main
+  // categories that have no subcategories (they act as their own leaf).
+  const leafNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const parent of categoryTree) {
+      if (parent.children.length === 0) names.add(parent.name.toLowerCase());
+      else parent.children.forEach((c) => names.add(c.name.toLowerCase()));
+    }
+    return names;
+  }, [categoryTree]);
+
+  const renderProductRow = (product: Product) => (
+    <div
+      key={product.id}
+      className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-center justify-between gap-4 shadow-md"
+    >
+      <div className="flex items-center gap-4">
+        {product.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={product.image_url}
+            alt={product.name}
+            className="w-14 h-14 object-cover rounded-lg border border-slate-700"
+          />
+        ) : (
+          <div className="w-14 h-14 bg-slate-900 rounded-lg flex items-center justify-center text-slate-500 border border-slate-700">
+            🔌
+          </div>
+        )}
+
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-semibold text-white text-sm">{product.name}</h3>
+            {product.category && (
+              <span className="text-[10px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 px-1.5 py-0.5 rounded uppercase">
+                {product.category}
+              </span>
+            )}
+            {product.is_splittable && (
+              <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded">
+                Splittable
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-400 font-mono">SKU: {product.sku || 'N/A'}</p>
+          <div className="text-xs font-bold text-emerald-400 mt-0.5">
+            ₦{Number(product.unit_price).toLocaleString()}
+          </div>
+          <p className="text-[11px] text-slate-400">
+            {product.is_splittable
+              ? `Stock: Adapter (${product.stock_adapter || 0}) | Cable (${product.stock_cable || 0})`
+              : `Stock: ${product.stock_qty || 0}`}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => handleEditProduct(product)}
+          className="bg-slate-700 hover:bg-slate-600 text-cyan-300 text-xs font-medium px-3 py-1.5 rounded transition cursor-pointer"
+        >
+          Edit
+        </button>
+        <button
+          onClick={() => handleDeleteProduct(product.id, product.name)}
+          className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-medium px-3 py-1.5 rounded transition cursor-pointer"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -377,11 +442,26 @@ export default function AdminProductsPage() {
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
                   >
                     <option value="">— No category —</option>
-                    {categoryList.map((c) => (
-                      <option key={c.id} value={c.name}>
-                        {c.name}
+                    {productForm.category && !leafNames.has(productForm.category.toLowerCase()) ? (
+                      <option value={productForm.category}>
+                        {productForm.category} (move to a subcategory)
                       </option>
-                    ))}
+                    ) : null}
+                    {categoryTree.map((parent) =>
+                      parent.children.length > 0 ? (
+                        <optgroup key={parent.id} label={parent.name}>
+                          {parent.children.map((child) => (
+                            <option key={child.id} value={child.name}>
+                              {child.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : (
+                        <option key={parent.id} value={parent.name}>
+                          {parent.name}
+                        </option>
+                      )
+                    )}
                     <option value="__add_new__">+ Add new category…</option>
                   </select>
                 )}
@@ -497,83 +577,28 @@ export default function AdminProductsPage() {
         <section className="lg:col-span-2">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
             <h2 className="text-base font-bold text-white">
-              Inventory Products ({filteredProducts.length})
+              Inventory Products ({browser.totalCount})
             </h2>
           </div>
 
-          <CategoryFilterBar
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            categories={categoryPillNames}
-            selectedCategory={selectedCategory}
-            onSelectCategory={setSelectedCategory}
-          />
+          <CategoryBrowserBar browser={browser} variant="dark" showSearch />
 
           {loadingProducts ? (
             <div className="p-6 text-center text-slate-400 bg-slate-800 rounded-xl">Loading products...</div>
-          ) : filteredProducts.length === 0 ? (
+          ) : browser.sections.length === 0 ? (
             <div className="p-6 text-center text-slate-500 bg-slate-800/50 border border-slate-800 rounded-xl text-xs">
               No products found matching search or category criteria.
             </div>
           ) : (
-            <div className="space-y-3">
-              {filteredProducts.map((product) => (
-                <div
-                  key={product.id}
-                  className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-center justify-between gap-4 shadow-md"
-                >
-                  <div className="flex items-center gap-4">
-                    {product.image_url ? (
-                      <img
-                        src={product.image_url}
-                        alt={product.name}
-                        className="w-14 h-14 object-cover rounded-lg border border-slate-700"
-                      />
-                    ) : (
-                      <div className="w-14 h-14 bg-slate-900 rounded-lg flex items-center justify-center text-slate-500 border border-slate-700">
-                        🔌
-                      </div>
-                    )}
-
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-semibold text-white text-sm">{product.name}</h3>
-                        {product.category && (
-                          <span className="text-[10px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 px-1.5 py-0.5 rounded uppercase">
-                            {product.category}
-                          </span>
-                        )}
-                        {product.is_splittable && (
-                          <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded">
-                            Splittable
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-400 font-mono">SKU: {product.sku || 'N/A'}</p>
-                      <div className="text-xs font-bold text-emerald-400 mt-0.5">
-                        ₦{Number(product.unit_price).toLocaleString()}
-                      </div>
-                      <p className="text-[11px] text-slate-400">
-                        {product.is_splittable
-                          ? `Stock: Adapter (${product.stock_adapter || 0}) | Cable (${product.stock_cable || 0})`
-                          : `Stock: ${product.stock_qty || 0}`}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleEditProduct(product)}
-                      className="bg-slate-700 hover:bg-slate-600 text-cyan-300 text-xs font-medium px-3 py-1.5 rounded transition cursor-pointer"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDeleteProduct(product.id, product.name)}
-                      className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-medium px-3 py-1.5 rounded transition cursor-pointer"
-                    >
-                      Delete
-                    </button>
+            <div className="space-y-6">
+              {browser.sections.map((section) => (
+                <div key={section.key}>
+                  <h3 className="text-xs font-bold text-cyan-400 uppercase tracking-wider mb-3 pb-1 border-b border-slate-700 inline-block">
+                    {section.name}{' '}
+                    <span className="text-slate-500 font-normal">({section.items.length})</span>
+                  </h3>
+                  <div className="space-y-3">
+                    {section.items.map((product) => renderProductRow(product))}
                   </div>
                 </div>
               ))}
