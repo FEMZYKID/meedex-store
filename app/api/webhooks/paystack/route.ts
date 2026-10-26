@@ -3,6 +3,33 @@ import crypto from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseAdmin } from '../../../../lib/supabaseAdmin';
 import { sendOrderEmail } from '../../../../lib/orderEmails';
+import { notifyNewOrder, notifyStaff } from '../../../../lib/notify';
+
+async function loadOrderWithItems(admin: SupabaseClient, orderId: string) {
+  const { data: order } = await admin.from('orders').select('*').eq('id', orderId).single();
+  const { data: orderItems } = await admin
+    .from('order_items')
+    .select('quantity, price_at_purchase, item_type, products(name)')
+    .eq('order_id', orderId);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const items = (orderItems || []).map((i: any) => ({
+    name: i.products?.name || 'Item',
+    item_type: i.item_type || 'Full Unit',
+    quantity: i.quantity,
+    price_at_purchase: i.price_at_purchase,
+  }));
+  return { order, items };
+}
+
+async function sendRefundEmail(admin: SupabaseClient, orderId: string) {
+  try {
+    const { order, items } = await loadOrderWithItems(admin, orderId);
+    if (order) await sendOrderEmail('refunded', order, items);
+  } catch (err) {
+    console.error('Failed to send refund email:', err);
+  }
+}
 
 // Stock ran out between checkout and payment: cancel the order and refund.
 async function handleOutOfStock(
@@ -26,12 +53,25 @@ async function handleOutOfStock(
     const json = await res.json();
     if (res.ok && json.status) {
       await admin.from('orders').update({ status: 'refunded' }).eq('id', orderId);
+      await sendRefundEmail(admin, orderId);
       console.log(`Order ${orderId} out of stock: refund started for ${reference}`);
+      await notifyStaff(
+        '⚠️ Order refunded automatically',
+        `Order #${orderId.slice(0, 8)} was paid but an item had just sold out. Paystack refund started for reference ${reference}.`
+      );
     } else {
       console.error(`REFUND NEEDED MANUALLY: order ${orderId}, ref ${reference}:`, json.message);
+      await notifyStaff(
+        '🚨 Manual refund needed',
+        `Order #${orderId.slice(0, 8)} was paid but an item had just sold out, and the automatic refund failed.\nRefund reference ${reference} in the Paystack dashboard, then mark the order Refunded on the Cancelled tab.`
+      );
     }
   } catch (err) {
     console.error(`REFUND NEEDED MANUALLY: order ${orderId}, ref ${reference}:`, err);
+    await notifyStaff(
+      '🚨 Manual refund needed',
+      `Order #${orderId.slice(0, 8)} was paid but an item had just sold out, and the automatic refund failed.\nRefund reference ${reference} in the Paystack dashboard, then mark the order Refunded on the Cancelled tab.`
+    );
   }
 }
 
@@ -78,7 +118,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ status: 'ignored' }, { status: 200 });
       }
       if (orderRow.status !== 'pending') {
-        // Paystack retry or already handled; do nothing (no duplicate emails)
+        // Paystack retry or already handled; do nothing (no duplicate emails or alerts)
         return NextResponse.json({ status: 'already_processed' }, { status: 200 });
       }
 
@@ -88,6 +128,10 @@ export async function POST(req: Request) {
       if (data.currency !== 'NGN' || Number(data.amount) !== expectedKobo) {
         console.error(
           `Webhook: AMOUNT MISMATCH, order ${orderId}: paid ${data.amount} ${data.currency}, expected ${expectedKobo} NGN. Review manually.`
+        );
+        await notifyStaff(
+          '🚨 Payment amount mismatch',
+          `Order #${String(orderId).slice(0, 8)}: Paystack reports ${data.amount} ${data.currency}, expected ${expectedKobo} NGN (in kobo). Reference ${reference}. The order was NOT marked paid. Please review it in Paystack.`
         );
         return NextResponse.json({ status: 'ignored' }, { status: 200 });
       }
@@ -108,26 +152,18 @@ export async function POST(req: Request) {
 
       console.log(`Order ${orderId} successfully marked paid for ref ${reference}`);
 
-      // Best-effort email; never affects the 200 response to Paystack.
+      // Best-effort: customer email and staff alert. Failures here never
+      // change the 200 response to Paystack.
       try {
-        const { data: order } = await supabaseAdmin.from('orders').select('*').eq('id', orderId).single();
-        const { data: orderItems } = await supabaseAdmin
-          .from('order_items')
-          .select('quantity, price_at_purchase, item_type, products(name)')
-          .eq('order_id', orderId);
-
+        const { order, items } = await loadOrderWithItems(supabaseAdmin, orderId);
         if (order) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const items = (orderItems || []).map((i: any) => ({
-            name: i.products?.name || 'Item',
-            item_type: i.item_type || 'Full Unit',
-            quantity: i.quantity,
-            price_at_purchase: i.price_at_purchase,
-          }));
-          await sendOrderEmail('processing', order, items);
+          await Promise.allSettled([
+            sendOrderEmail('processing', order, items),
+            notifyNewOrder(order, items),
+          ]);
         }
-      } catch (emailErr) {
-        console.error('Failed to send order-processing email:', emailErr);
+      } catch (notifyErr) {
+        console.error('Failed to send order emails or alerts:', notifyErr);
       }
     }
 
