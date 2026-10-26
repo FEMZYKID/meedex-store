@@ -10,7 +10,13 @@ import {
   type DeliveryZone,
 } from './storeConfig';
 
-export type OrderEmailStage = 'processing' | 'confirmed' | 'refunded' | 'out_for_delivery' | 'delivered';
+export type OrderEmailStage =
+  | 'processing'
+  | 'confirmed'
+  | 'cancelled'
+  | 'refunded'
+  | 'out_for_delivery'
+  | 'delivered';
 
 export interface OrderForEmail {
   id: string;
@@ -22,6 +28,7 @@ export interface OrderForEmail {
   shipping_address: string | null;
   total_amount: number;
   delivery_fee: number | null;
+  cancellation_reason?: string | null;
 }
 
 export interface OrderItemForEmail {
@@ -52,7 +59,7 @@ function shell(title: string, body: string) {
       ${body}
       <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;" />
       <p style="font-size:12px;color:#6b7280;margin:0;">
-        Questions? Call ${SUPPORT_PHONE} or email ${SUPPORT_EMAIL}.
+        Questions? Call ${esc(SUPPORT_PHONE)} or email ${esc(SUPPORT_EMAIL)}.
       </p>
     </div>
   </div>`;
@@ -64,7 +71,7 @@ function orderDetails(order: OrderForEmail, items: OrderItemForEmail[]) {
       (i) => `
       <tr>
         <td style="padding:6px 0;border-bottom:1px solid #f3f4f6;">${esc(i.name)}${
-        i.item_type !== 'Full Unit' ? ` (${i.item_type} only)` : ''
+        i.item_type !== 'Full Unit' ? ` (${esc(i.item_type)} only)` : ''
       } × ${i.quantity}</td>
         <td style="padding:6px 0;border-bottom:1px solid #f3f4f6;text-align:right;">${naira(
           i.price_at_purchase * i.quantity
@@ -81,19 +88,19 @@ function orderDetails(order: OrderForEmail, items: OrderItemForEmail[]) {
 
   const fulfilment =
     order.delivery_method === 'pickup'
-      ? `Store pickup — ${STORE_PICKUP_ADDRESS}`
+      ? `Store pickup — ${esc(STORE_PICKUP_ADDRESS)}`
       : `Delivery — ${esc(order.delivery_zone)}${order.shipping_address ? `, ${esc(order.shipping_address)}` : ''}`;
 
-      const feeNote =
-      order.delivery_method === 'delivery' && !(order.delivery_fee && order.delivery_fee > 0)
-        ? `<p style="font-size:13px;margin:12px 0 0;color:#92400e;">Your delivery fee depends on your exact location. We will confirm the amount with you on WhatsApp or by email, and it will be collected separately.</p>`
-        : '';
+  const feeNote =
+    order.delivery_method === 'delivery' && !(order.delivery_fee && order.delivery_fee > 0)
+      ? `<p style="font-size:13px;margin:12px 0 0;color:#92400e;">Your delivery fee depends on your exact location. We will confirm the amount with you on WhatsApp or by email, and it will be collected separately.</p>`
+      : '';
 
   return `
-    <p style="font-size:13px;margin:0 0 4px;"><strong>Order ID:</strong> ${order.id}</p>
+    <p style="font-size:13px;margin:0 0 4px;"><strong>Order ID:</strong> ${esc(order.id)}</p>
     ${
       order.paystack_reference
-        ? `<p style="font-size:13px;margin:0 0 4px;"><strong>Transaction reference:</strong> ${order.paystack_reference}</p>`
+        ? `<p style="font-size:13px;margin:0 0 4px;"><strong>Transaction reference:</strong> ${esc(order.paystack_reference)}</p>`
         : ''
     }
     <p style="font-size:13px;margin:0 0 12px;"><strong>Fulfilment:</strong> ${fulfilment}</p>
@@ -105,7 +112,7 @@ function orderDetails(order: OrderForEmail, items: OrderItemForEmail[]) {
         <td style="padding:8px 0;text-align:right;font-weight:bold;">${naira(total)}</td>
       </tr>
     </table>
-    ${feeNote}`; 
+    ${feeNote}`;
 }
 
 export function buildOrderEmail(stage: OrderEmailStage, order: OrderForEmail, items: OrderItemForEmail[]) {
@@ -131,17 +138,28 @@ export function buildOrderEmail(stage: OrderEmailStage, order: OrderForEmail, it
         html: shell(
           'Your order is confirmed',
           isPickup
-            ? `<p style="font-size:14px;">Hi ${name}, your order is confirmed and ready for pickup. Please collect it ${PICKUP_WINDOW_NOTE} at <strong>${STORE_PICKUP_ADDRESS}</strong>.</p>${details}`
-            : `<p style="font-size:14px;">Hi ${name}, your order is confirmed. One of our delivery agents will reach out to you shortly to arrange your delivery schedule. Expected delivery: ${timeframe}.</p>${details}`
+            ? `<p style="font-size:14px;">Hi ${name}, your order is confirmed and ready for pickup. Please collect it ${esc(PICKUP_WINDOW_NOTE)} at <strong>${esc(STORE_PICKUP_ADDRESS)}</strong>.</p>${details}`
+            : `<p style="font-size:14px;">Hi ${name}, your order is confirmed. One of our delivery agents will reach out to you shortly to arrange your delivery schedule. Expected delivery: ${esc(timeframe)}.</p>${details}`
+        ),
+      };
+
+    case 'cancelled':
+      return {
+        subject: 'Your order has been cancelled — Meedex Gadgets',
+        html: shell(
+          'Your order has been cancelled',
+          `<p style="font-size:14px;">Hi ${name}, we\u2019re sorry, but we had to cancel your order.</p>
+           <p style="font-size:14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:10px 12px;"><strong>Reason:</strong> ${esc(order.cancellation_reason) || 'Not provided.'}</p>
+           <p style="font-size:14px;">Your payment will be refunded to your original payment method. We\u2019ll email you again once the refund has been issued.</p>${details}`
         ),
       };
 
     case 'refunded':
       return {
-        subject: 'Your order has been refunded — Meedex Gadgets',
+        subject: 'Your refund has been issued — Meedex Gadgets',
         html: shell(
-          'Your order has been refunded',
-          `<p style="font-size:14px;">Hi ${name}, we\u2019re sorry we couldn\u2019t fulfil your order. A refund has been issued for the amount below. If you have any questions, please get in touch.</p>${details}`
+          'Your refund has been issued',
+          `<p style="font-size:14px;">Hi ${name}, your refund for the order below has been issued to your original payment method. Depending on your bank, it can take some days to show in your account. If you have any questions, please get in touch.</p>${details}`
         ),
       };
 

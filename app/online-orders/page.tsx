@@ -25,21 +25,27 @@ interface Order {
   customer_email: string | null;
   customer_phone: string | null;
   paystack_reference: string | null;
+  cancellation_reason: string | null;
   created_at: string;
   order_items: OrderItem[];
 }
+
+type Action = 'confirm' | 'ship' | 'deliver' | 'cancel' | 'refund';
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   paid: { label: 'New — Needs Confirmation', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' },
   confirmed: { label: 'Confirmed', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' },
   shipped: { label: 'Out for Delivery', color: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30' },
   delivered: { label: 'Delivered / Picked Up', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
+  cancelled: { label: 'Cancelled', color: 'bg-orange-500/10 text-orange-400 border-orange-500/30' },
   refunded: { label: 'Refunded', color: 'bg-rose-500/10 text-rose-400 border-rose-500/30' },
   failed: { label: 'Failed', color: 'bg-slate-700 text-slate-400 border-slate-600' },
-  cancelled: { label: 'Cancelled', color: 'bg-slate-700 text-slate-400 border-slate-600' },
 };
 
-const TABS = ['paid', 'confirmed', 'shipped', 'delivered', 'refunded'] as const;
+const TABS = ['paid', 'confirmed', 'shipped', 'delivered', 'cancelled', 'refunded'] as const;
+
+const MIN_REASON = 5;
+const MAX_REASON = 300;
 
 export default function OnlineOrdersPage() {
   const router = useRouter();
@@ -49,10 +55,16 @@ export default function OnlineOrdersPage() {
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>('paid');
   const [actingOn, setActingOn] = useState<string | null>(null);
 
+  const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!session) {
+      setLoading(false);
+      return;
+    }
 
     const res = await fetch('/api/orders', {
       headers: { Authorization: `Bearer ${session.access_token}` },
@@ -81,27 +93,61 @@ export default function OnlineOrdersPage() {
     init();
   }, [router, fetchOrders]);
 
-  async function runAction(orderId: string, action: 'confirm' | 'refund' | 'ship' | 'deliver') {
-    if (action === 'refund' && !confirm('Have you already refunded this customer via Paystack? This only records it and emails them — it does NOT trigger the actual refund.')) {
-      return;
+  async function runAction(orderId: string, action: Action, reason?: string): Promise<boolean> {
+    if (
+      action === 'refund' &&
+      !confirm(
+        'Have you already refunded this customer via Paystack? This only records it and emails them — it does NOT trigger the actual refund.'
+      )
+    ) {
+      return false;
     }
+
     setActingOn(orderId);
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!session) {
+      setActingOn(null);
+      router.push('/login');
+      return false;
+    }
 
     const res = await fetch('/api/orders', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-      body: JSON.stringify({ orderId, action }),
+      body: JSON.stringify({ orderId, action, reason }),
     });
     const data = await res.json();
     setActingOn(null);
 
     if (!res.ok) {
       alert(data.error || 'Something went wrong.');
-      return;
+      return false;
+    }
+    if (data.emailSent === false) {
+      alert('Order updated, but the customer email could not be sent. Please contact them directly.');
     }
     fetchOrders();
+    return true;
+  }
+
+  function openCancel(order: Order) {
+    setCancelTarget(order);
+    setCancelReason('');
+  }
+
+  async function submitCancel() {
+    if (!cancelTarget) return;
+    const reason = cancelReason.trim();
+    if (reason.length < MIN_REASON) {
+      alert(`Please enter a reason (at least ${MIN_REASON} characters).`);
+      return;
+    }
+    const ok = await runAction(cancelTarget.id, 'cancel', reason);
+    if (ok) {
+      setCancelTarget(null);
+      setCancelReason('');
+      setActiveTab('cancelled');
+    }
   }
 
   if (!ready) {
@@ -150,6 +196,7 @@ export default function OnlineOrdersPage() {
             {filtered.map((order) => {
               const total = Number(order.total_amount) + Number(order.delivery_fee || 0);
               const busy = actingOn === order.id;
+              const canCancel = ['paid', 'confirmed', 'shipped'].includes(order.status);
 
               return (
                 <div key={order.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
@@ -183,6 +230,13 @@ export default function OnlineOrdersPage() {
                     )}
                   </div>
 
+                  {(order.status === 'cancelled' || order.status === 'refunded') && order.cancellation_reason && (
+                    <div className="text-xs text-orange-300 bg-orange-500/10 border border-orange-500/30 rounded-lg p-3 mb-3">
+                      <span className="font-bold">Cancellation reason: </span>
+                      {order.cancellation_reason}
+                    </div>
+                  )}
+
                   <div className="space-y-1 mb-3">
                     {order.order_items.map((item, i) => (
                       <div key={i} className="flex justify-between text-xs text-slate-300">
@@ -195,27 +249,18 @@ export default function OnlineOrdersPage() {
                     ))}
                   </div>
 
-                  <div className="flex justify-between items-center pt-2 border-t border-slate-800">
+                  <div className="flex flex-wrap justify-between items-center gap-2 pt-2 border-t border-slate-800">
                     <span className="font-bold text-emerald-400 text-sm">₦{total.toLocaleString()}</span>
 
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       {order.status === 'paid' && (
-                        <>
-                          <button
-                            disabled={busy}
-                            onClick={() => runAction(order.id, 'confirm')}
-                            className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-50"
-                          >
-                            Confirm
-                          </button>
-                          <button
-                            disabled={busy}
-                            onClick={() => runAction(order.id, 'refund')}
-                            className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-50"
-                          >
-                            Refund
-                          </button>
-                        </>
+                        <button
+                          disabled={busy}
+                          onClick={() => runAction(order.id, 'confirm')}
+                          className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-50"
+                        >
+                          Confirm
+                        </button>
                       )}
                       {order.status === 'confirmed' && order.delivery_method === 'delivery' && (
                         <button
@@ -244,6 +289,24 @@ export default function OnlineOrdersPage() {
                           Mark Delivered
                         </button>
                       )}
+                      {canCancel && (
+                        <button
+                          disabled={busy}
+                          onClick={() => openCancel(order)}
+                          className="bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-50"
+                        >
+                          Cancel Order
+                        </button>
+                      )}
+                      {order.status === 'cancelled' && (
+                        <button
+                          disabled={busy}
+                          onClick={() => runAction(order.id, 'refund')}
+                          className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-50"
+                        >
+                          Refund
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -252,6 +315,53 @@ export default function OnlineOrdersPage() {
           </div>
         )}
       </div>
+
+      {cancelTarget && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5">
+            <h2 className="text-base font-bold mb-1">Cancel order #{cancelTarget.id.slice(0, 8)}?</h2>
+            <p className="text-xs text-slate-400 mb-3">
+              The items go back into stock and {cancelTarget.customer_name || 'the customer'} is emailed this reason.
+              You can then refund them from the Cancelled tab.
+            </p>
+
+            <label className="block text-xs font-semibold text-slate-300 mb-1">
+              Reason for cancellation (the customer will see this) *
+            </label>
+            <textarea
+              rows={4}
+              maxLength={MAX_REASON}
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="e.g. The item is no longer available and we could not get a replacement."
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
+            />
+            <p className="text-[11px] text-slate-500 mt-1 text-right">
+              {cancelReason.trim().length}/{MAX_REASON}
+            </p>
+
+            <div className="flex justify-end gap-2 mt-3">
+              <button
+                disabled={actingOn === cancelTarget.id}
+                onClick={() => {
+                  setCancelTarget(null);
+                  setCancelReason('');
+                }}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-bold px-4 py-2 rounded-lg disabled:opacity-50"
+              >
+                Keep Order
+              </button>
+              <button
+                disabled={actingOn === cancelTarget.id || cancelReason.trim().length < MIN_REASON}
+                onClick={submitCancel}
+                className="bg-orange-500 hover:bg-orange-400 text-slate-950 text-xs font-bold px-4 py-2 rounded-lg disabled:opacity-50"
+              >
+                {actingOn === cancelTarget.id ? 'Cancelling…' : 'Cancel Order & Notify Customer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
