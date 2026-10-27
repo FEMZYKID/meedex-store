@@ -13,11 +13,12 @@ import {
 
 // Inputs and selects don't get a text color from Tailwind by default, so
 // they were silently inheriting the page's near-white dark-mode text color
-// (globals.css sets --foreground to a light color under
-// prefers-color-scheme: dark) — invisible against these white fields.
-// Every field below sets its color explicitly so this can't happen again.
+// and were invisible against these white fields. Every field below sets
+// its color explicitly so this can't happen again.
 const FIELD_CLASS =
   'w-full px-3 py-2 border rounded text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white';
+
+const PHONE_LENGTH = 11;
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -38,12 +39,9 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [errorMessage, setErrorMessage] = useState('');
 
   // If the customer clicks the browser's Back button after being sent to
-  // Paystack (instead of completing payment), some browsers restore this
-  // exact page from cache rather than reloading it — including whatever
-  // React state it was frozen in. Without this, "Processing..." (and the
-  // disabled button) would stay stuck forever since no new render ever
-  // happens to reset it. `pageshow` with `event.persisted` fires
-  // specifically for that bfcache-restore case.
+  // Paystack, some browsers restore this page from cache with "Processing..."
+  // still showing. `pageshow` with `event.persisted` fires for exactly that
+  // case, so we reset the button here.
   useEffect(() => {
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) {
@@ -56,16 +54,22 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
   if (!isOpen) return null;
 
-  const knownFee = deliveryMethod === 'delivery' ? DELIVERY_FEES[deliveryZone as DeliveryZone] : undefined;
-  const grandTotal = totalAmount + (knownFee || 0);
+  // undefined = fee not known yet (e.g. "Others"); 0 = free; >0 = charged upfront
+  const zoneFee =
+    deliveryMethod === 'delivery' && deliveryZone
+      ? DELIVERY_FEES[deliveryZone as DeliveryZone]
+      : undefined;
+  const grandTotal = totalAmount + (zoneFee ?? 0);
   const timeframe = deliveryZone ? DELIVERY_TIMEFRAMES[deliveryZone as DeliveryZone] : undefined;
+  const timeframeText = timeframe || DEFAULT_DELIVERY_TIMEFRAME_NOTE;
 
   const deliveryFeeNote = (() => {
     if (deliveryMethod !== 'delivery' || !deliveryZone) return null;
-    if (knownFee) {
-      return `Delivery fee: ₦${knownFee.toLocaleString()} — included in your payment total below. Estimated delivery time: ${
-        timeframe || DEFAULT_DELIVERY_TIMEFRAME_NOTE
-      }`;
+    if (zoneFee === 0) {
+      return `Free delivery to ${deliveryZone}! Estimated delivery time: ${timeframeText}`;
+    }
+    if (zoneFee !== undefined) {
+      return `Delivery fee: ₦${zoneFee.toLocaleString()} — included in your payment total below. Estimated delivery time: ${timeframeText}`;
     }
     return `Delivery fee varies by your exact location. We\u2019ll confirm the amount with you by phone/email shortly after your order is placed, and it will be collected separately. ${DEFAULT_DELIVERY_TIMEFRAME_NOTE}`;
   })();
@@ -76,6 +80,11 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
     if (deliveryMethod === 'delivery' && (!deliveryZone || !addressDetails.trim())) {
       setErrorMessage('Please select a delivery zone and enter your address details.');
+      return;
+    }
+
+    if (phone.length !== PHONE_LENGTH) {
+      setErrorMessage(`Please enter a valid ${PHONE_LENGTH}-digit phone number (digits only).`);
       return;
     }
 
@@ -102,8 +111,8 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       }
 
       window.location.href = data.authorization_url;
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Something went wrong.');
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Something went wrong.');
       setLoading(false);
     }
   }
@@ -167,10 +176,14 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   <span>Subtotal:</span>
                   <span>₦{totalAmount.toLocaleString()}</span>
                 </div>
-                {knownFee ? (
+                {zoneFee !== undefined ? (
                   <div className="flex justify-between text-sm text-gray-700">
                     <span>Delivery fee ({deliveryZone}):</span>
-                    <span>₦{knownFee.toLocaleString()}</span>
+                    {zoneFee === 0 ? (
+                      <span className="font-bold text-emerald-600">FREE</span>
+                    ) : (
+                      <span>₦{zoneFee.toLocaleString()}</span>
+                    )}
                   </div>
                 ) : deliveryMethod === 'delivery' && deliveryZone ? (
                   <div className="flex justify-between text-xs text-gray-500 italic">
@@ -179,7 +192,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   </div>
                 ) : null}
                 <div className="flex justify-between text-base font-bold text-gray-900 pt-1">
-                  <span>{knownFee ? 'Total to Pay:' : 'Total:'}</span>
+                  <span>{zoneFee !== undefined ? 'Total to Pay:' : 'Total:'}</span>
                   <span className="text-indigo-600">₦{grandTotal.toLocaleString()}</span>
                 </div>
               </div>
@@ -224,23 +237,33 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     className={FIELD_CLASS}
                   >
                     <option value="">Select delivery zone...</option>
-                    {DELIVERY_ZONES.map((zone) => (
-                      <option key={zone} value={zone}>
-                        {zone}
-                        {DELIVERY_FEES[zone] ? ` — ₦${DELIVERY_FEES[zone]!.toLocaleString()}` : ' — fee varies'}
-                      </option>
-                    ))}
+                    {DELIVERY_ZONES.map((zone) => {
+                      const fee = DELIVERY_FEES[zone];
+                      return (
+                        <option key={zone} value={zone}>
+                          {zone}
+                          {fee === 0 ? ' — FREE' : fee ? ` — ₦${fee.toLocaleString()}` : ' — fee varies'}
+                        </option>
+                      );
+                    })}
                   </select>
                   <textarea
                     required
                     rows={2}
+                    maxLength={300}
                     placeholder="Detailed address / description (hostel name, room number, landmark, etc.)"
                     value={addressDetails}
                     onChange={(e) => setAddressDetails(e.target.value)}
                     className={`${FIELD_CLASS} resize-none`}
                   />
                   {deliveryFeeNote && (
-                    <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                    <p
+                      className={`text-[11px] rounded-lg p-2.5 border ${
+                        zoneFee === 0
+                          ? 'text-emerald-800 bg-emerald-50 border-emerald-200'
+                          : 'text-amber-800 bg-amber-50 border-amber-200'
+                      }`}
+                    >
                       {deliveryFeeNote}
                     </p>
                   )}
@@ -259,6 +282,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
             <input
               type="text"
               required
+              maxLength={100}
               placeholder="Full Name"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -267,19 +291,34 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
             <input
               type="email"
               required
+              maxLength={254}
               placeholder="Email Address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={FIELD_CLASS}
             />
-            <input
-              type="tel"
-              required
-              placeholder="Phone Number"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className={FIELD_CLASS}
-            />
+            <div>
+              <input
+                type="tel"
+                inputMode="numeric"
+                autoComplete="tel"
+                required
+                maxLength={PHONE_LENGTH}
+                pattern={`[0-9]{${PHONE_LENGTH}}`}
+                title={`Enter a ${PHONE_LENGTH}-digit phone number`}
+                placeholder={`Phone Number (${PHONE_LENGTH} digits)`}
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, PHONE_LENGTH))}
+                className={FIELD_CLASS}
+              />
+              <p
+                className={`text-[11px] mt-1 ${
+                  phone.length === 0 || phone.length === PHONE_LENGTH ? 'text-gray-500' : 'text-red-600'
+                }`}
+              >
+                {phone.length}/{PHONE_LENGTH} digits
+              </p>
+            </div>
 
             <button
               type="submit"

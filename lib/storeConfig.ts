@@ -14,7 +14,7 @@ export type DeliveryZone = (typeof DELIVERY_ZONES)[number];
 // here (e.g. "Others") has its fee confirmed with the customer after
 // checkout instead of charged upfront — see CartDrawer's messaging.
 export const DELIVERY_FEES: Partial<Record<DeliveryZone, number>> = {
-  'LASU On-Campus': 400,
+  'LASU On-Campus': 0,
   'LASU Off-Campus': 800,
 };
 

@@ -14,6 +14,7 @@ const MAX_LINES = 30;
 const MAX_QTY_PER_LINE = 20;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_RE = /^\d{11}$/;
 
 interface ProductRow {
   id: string;
@@ -69,8 +70,14 @@ export async function POST(req: Request) {
     if (!EMAIL_RE.test(safeEmail)) {
       return NextResponse.json({ error: 'A valid email is required.' }, { status: 400 });
     }
-    if (!safeName || !safePhone) {
-      return NextResponse.json({ error: 'Name and phone number are required.' }, { status: 400 });
+    if (!safeName) {
+      return NextResponse.json({ error: 'Name is required.' }, { status: 400 });
+    }
+    if (!PHONE_RE.test(safePhone)) {
+      return NextResponse.json(
+        { error: 'Please enter a valid 11-digit phone number (digits only).' },
+        { status: 400 }
+      );
     }
     if (!deliveryMethod || !['pickup', 'delivery'].includes(deliveryMethod)) {
       return NextResponse.json({ error: 'Invalid delivery method.' }, { status: 400 });
@@ -143,7 +150,8 @@ export async function POST(req: Request) {
 
     const totalAmount = lines.reduce((sum, l) => sum + l.price * l.quantity, 0);
 
-    // Delivery fee comes from lib/storeConfig (null for zones like "Others")
+    // Delivery fee comes from lib/storeConfig:
+    //   a number (0 = free) when the zone has a fixed fee, null for zones like "Others"
     const deliveryFee =
       deliveryMethod === 'delivery'
         ? DELIVERY_FEES[safeZone as DeliveryZone] ?? null

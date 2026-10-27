@@ -69,12 +69,21 @@ export async function notifyNewOrder(order: OrderForNotify, items: OrderItemForE
     )
     .join('\n');
 
-  const fulfilment =
-    order.delivery_method === 'pickup'
-      ? 'Store pickup'
-      : `Delivery - ${cut(order.delivery_zone, 50)}${
-          order.shipping_address ? `, ${cut(order.shipping_address, 200)}` : ''
-        }`;
+  const isDelivery = order.delivery_method === 'delivery';
+  const feeKnown = order.delivery_fee !== null && order.delivery_fee !== undefined;
+
+  const fulfilment = !isDelivery
+    ? 'Store pickup'
+    : `Delivery - ${cut(order.delivery_zone, 50)}${
+        order.shipping_address ? `, ${cut(order.shipping_address, 200)}` : ''
+      }`;
+
+  let feeLine = '';
+  if (isDelivery && !feeKnown) {
+    feeLine = 'Delivery fee not charged yet: confirm it with the customer.';
+  } else if (isDelivery && Number(order.delivery_fee) === 0) {
+    feeLine = 'Delivery fee: FREE';
+  }
 
   const text = [
     `Order #${order.id.slice(0, 8)} is paid and waiting for confirmation.`,
@@ -86,9 +95,7 @@ export async function notifyNewOrder(order: OrderForNotify, items: OrderItemForE
     lines,
     '',
     `Total paid: ${naira(total)}`,
-    order.delivery_method === 'delivery' && !(order.delivery_fee && order.delivery_fee > 0)
-      ? 'Delivery fee not charged yet: confirm it with the customer.'
-      : '',
+    feeLine,
     '',
     `Open: ${STAFF_SITE}/online-orders`,
   ]

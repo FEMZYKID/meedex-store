@@ -65,7 +65,10 @@ function shell(title: string, body: string) {
   </div>`;
 }
 
-function orderDetails(order: OrderForEmail, items: OrderItemForEmail[]) {
+// showFeeNote: the "we'll confirm your delivery fee" message is only useful
+// in the first email, and only when the fee genuinely isn't known yet
+// (fee is null). A fee of 0 means free delivery, which is shown as FREE.
+function orderDetails(order: OrderForEmail, items: OrderItemForEmail[], showFeeNote: boolean) {
   const rows = items
     .map(
       (i) => `
@@ -80,11 +83,17 @@ function orderDetails(order: OrderForEmail, items: OrderItemForEmail[]) {
     )
     .join('');
 
+  const isDelivery = order.delivery_method === 'delivery';
+  const feeKnown = order.delivery_fee !== null && order.delivery_fee !== undefined;
+  const fee = Number(order.delivery_fee || 0);
+
   const deliveryLine =
-    order.delivery_fee && order.delivery_fee > 0
-      ? `<tr><td style="padding:6px 0;">Delivery fee</td><td style="padding:6px 0;text-align:right;">${naira(order.delivery_fee)}</td></tr>`
+    isDelivery && feeKnown
+      ? `<tr><td style="padding:6px 0;">Delivery fee</td><td style="padding:6px 0;text-align:right;">${
+          fee > 0 ? naira(fee) : '<strong style="color:#059669;">FREE</strong>'
+        }</td></tr>`
       : '';
-  const total = Number(order.total_amount) + Number(order.delivery_fee || 0);
+  const total = Number(order.total_amount) + fee;
 
   const fulfilment =
     order.delivery_method === 'pickup'
@@ -92,7 +101,7 @@ function orderDetails(order: OrderForEmail, items: OrderItemForEmail[]) {
       : `Delivery — ${esc(order.delivery_zone)}${order.shipping_address ? `, ${esc(order.shipping_address)}` : ''}`;
 
   const feeNote =
-    order.delivery_method === 'delivery' && !(order.delivery_fee && order.delivery_fee > 0)
+    showFeeNote && isDelivery && !feeKnown
       ? `<p style="font-size:13px;margin:12px 0 0;color:#92400e;">Your delivery fee depends on your exact location. We will confirm the amount with you on WhatsApp or by email, and it will be collected separately.</p>`
       : '';
 
@@ -118,7 +127,7 @@ function orderDetails(order: OrderForEmail, items: OrderItemForEmail[]) {
 export function buildOrderEmail(stage: OrderEmailStage, order: OrderForEmail, items: OrderItemForEmail[]) {
   const name = esc(order.customer_name) || 'there';
   const isPickup = order.delivery_method === 'pickup';
-  const details = orderDetails(order, items);
+  const detailsFor = (showFeeNote: boolean) => orderDetails(order, items, showFeeNote);
   const timeframe =
     DELIVERY_TIMEFRAMES[order.delivery_zone as DeliveryZone] || DEFAULT_DELIVERY_TIMEFRAME_NOTE;
 
@@ -128,7 +137,7 @@ export function buildOrderEmail(stage: OrderEmailStage, order: OrderForEmail, it
         subject: 'We received your order — Meedex Gadgets',
         html: shell(
           'Your order is being processed',
-          `<p style="font-size:14px;">Hi ${name}, thanks for your order! Payment was successful and we\u2019re now processing it. You\u2019ll get another email once it\u2019s confirmed.</p>${details}`
+          `<p style="font-size:14px;">Hi ${name}, thanks for your order! Payment was successful and we\u2019re now processing it. You\u2019ll get another email once it\u2019s confirmed.</p>${detailsFor(true)}`
         ),
       };
 
@@ -138,8 +147,8 @@ export function buildOrderEmail(stage: OrderEmailStage, order: OrderForEmail, it
         html: shell(
           'Your order is confirmed',
           isPickup
-            ? `<p style="font-size:14px;">Hi ${name}, your order is confirmed and ready for pickup. Please collect it ${esc(PICKUP_WINDOW_NOTE)} at <strong>${esc(STORE_PICKUP_ADDRESS)}</strong>.</p>${details}`
-            : `<p style="font-size:14px;">Hi ${name}, your order is confirmed. One of our delivery agents will reach out to you shortly to arrange your delivery schedule. Expected delivery: ${esc(timeframe)}.</p>${details}`
+            ? `<p style="font-size:14px;">Hi ${name}, your order is confirmed and ready for pickup. Please collect it ${esc(PICKUP_WINDOW_NOTE)} at <strong>${esc(STORE_PICKUP_ADDRESS)}</strong>.</p>${detailsFor(false)}`
+            : `<p style="font-size:14px;">Hi ${name}, your order is confirmed. One of our delivery agents will reach out to you shortly to arrange your delivery schedule. Expected delivery: ${esc(timeframe)}.</p>${detailsFor(false)}`
         ),
       };
 
@@ -150,7 +159,7 @@ export function buildOrderEmail(stage: OrderEmailStage, order: OrderForEmail, it
           'Your order has been cancelled',
           `<p style="font-size:14px;">Hi ${name}, we\u2019re sorry, but we had to cancel your order.</p>
            <p style="font-size:14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:10px 12px;"><strong>Reason:</strong> ${esc(order.cancellation_reason) || 'Not provided.'}</p>
-           <p style="font-size:14px;">Your payment will be refunded to your original payment method. We\u2019ll email you again once the refund has been issued.</p>${details}`
+           <p style="font-size:14px;">Your payment will be refunded to your original payment method. We\u2019ll email you again once the refund has been issued.</p>${detailsFor(false)}`
         ),
       };
 
@@ -159,7 +168,7 @@ export function buildOrderEmail(stage: OrderEmailStage, order: OrderForEmail, it
         subject: 'Your refund has been issued — Meedex Gadgets',
         html: shell(
           'Your refund has been issued',
-          `<p style="font-size:14px;">Hi ${name}, your refund for the order below has been issued to your original payment method. Depending on your bank, it can take some days to show in your account. If you have any questions, please get in touch.</p>${details}`
+          `<p style="font-size:14px;">Hi ${name}, your refund for the order below has been issued to your original payment method. Depending on your bank, it can take some days to show in your account. If you have any questions, please get in touch.</p>${detailsFor(false)}`
         ),
       };
 
@@ -168,7 +177,7 @@ export function buildOrderEmail(stage: OrderEmailStage, order: OrderForEmail, it
         subject: 'Your order is out for delivery — Meedex Gadgets',
         html: shell(
           'Your order is on its way',
-          `<p style="font-size:14px;">Hi ${name}, your order is out for delivery. Please keep your phone close so our agent can reach you.</p>${details}`
+          `<p style="font-size:14px;">Hi ${name}, your order is out for delivery. Please keep your phone close so our agent can reach you.</p>${detailsFor(false)}`
         ),
       };
 
@@ -177,7 +186,7 @@ export function buildOrderEmail(stage: OrderEmailStage, order: OrderForEmail, it
         subject: isPickup ? 'Order picked up — thank you!' : 'Order delivered — thank you!',
         html: shell(
           isPickup ? 'Your order has been picked up' : 'Your order has been delivered',
-          `<p style="font-size:14px;">Hi ${name}, thank you for shopping with Meedex Gadgets! We hope you enjoy your purchase.</p>${details}`
+          `<p style="font-size:14px;">Hi ${name}, thank you for shopping with Meedex Gadgets! We hope you enjoy your purchase.</p>${detailsFor(false)}`
         ),
       };
   }
