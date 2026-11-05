@@ -48,6 +48,9 @@ const esc = (s: string | null | undefined) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://www.meedex.com.ng').replace(/\/$/, '');
+const POLICY_URL = `${SITE_URL}/policy`;
+
 function shell(title: string, body: string) {
   return `
   <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1f2937;">
@@ -60,6 +63,9 @@ function shell(title: string, body: string) {
       <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;" />
       <p style="font-size:12px;color:#6b7280;margin:0;">
         Questions? Call ${esc(SUPPORT_PHONE)} or email ${esc(SUPPORT_EMAIL)}.
+      </p>
+      <p style="font-size:12px;color:#6b7280;margin:8px 0 0;">
+        Please read our <a href="${POLICY_URL}" style="color:#4338ca;">Refund &amp; Replacement Policy</a>.
       </p>
     </div>
   </div>`;

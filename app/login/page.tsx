@@ -12,6 +12,13 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
+  const [idleNotice, setIdleNotice] = useState(false);
+
+  // Shown after the inactivity logout redirects here
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('reason') === 'idle') setIdleNotice(true);
+  }, []);
 
   // Handle live cooldown countdown
   useEffect(() => {
@@ -42,112 +49,84 @@ export default function LoginPage() {
 
     const cleanUsername = username.trim().toLowerCase();
 
-    // 1. Pre-check lockout status via the rate-limited server route (no PIN is
-    //    exposed by this call — it only ever returns lock state)
-    const statusRes = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'status', username: cleanUsername }),
-    });
-    const statusJson = await statusRes.json();
-
-    if (statusRes.status === 429) {
-      setLoading(false);
-      setErrorMsg(statusJson.error);
-      return;
-    }
-
-    const status = statusRes.ok ? statusJson.status : null;
-
-    if (!statusRes.ok || !status) {
-      setLoading(false);
-      setErrorMsg('Invalid Username or PIN');
-      return;
-    }
-
-    // 2. Check if account is in Total Lockdown
-    if (status.is_locked) {
-      setLoading(false);
-      setErrorMsg('🔒 Account is in TOTAL LOCKDOWN. Contact Admin to reset.');
-      return;
-    }
-
-    // 3. Check if active lockout timer exists
-    if (status.lockout_until) {
-      const lockTime = new Date(status.lockout_until).getTime();
-      const diff = Math.ceil((lockTime - Date.now()) / 1000);
-      if (diff > 0) {
-        setCooldownRemaining(diff);
-        setLoading(false);
-        setErrorMsg(`⏳ Cool off active. Please wait ${formatTime(diff)}.`);
-        return;
-      }
-    }
-
-    // 4. Verify credentials via real Supabase Auth (server-verified, not client-trusted)
-    const email = `${cleanUsername}@deprince.pos`;
-    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password: pin.trim(),
-    });
-
-    if (signInError || !signInData.session) {
-      // 5. Record the failed attempt via the same rate-limited server route
-      const failRes = await fetch('/api/login', {
+    let res: Response;
+    let data: any = {};
+    try {
+      res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'fail', username: cleanUsername }),
+        body: JSON.stringify({ username: cleanUsername, pin: pin.trim() }),
       });
-      const failJson = await failRes.json();
+      data = await res.json().catch(() => ({}));
+    } catch {
+      setLoading(false);
+      setErrorMsg('Could not reach the server. Check your connection and try again.');
+      return;
+    }
 
-      if (failRes.status === 429) {
+    // Success: the server verified the PIN and returned a session
+    if (res.ok && data.session) {
+      const { error: sessionErr } = await supabase.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      });
+      if (sessionErr) {
         setLoading(false);
-        setPin('');
-        setErrorMsg(failJson.error);
+        setErrorMsg('Could not start your session. Please try again.');
         return;
       }
+      setLoading(false);
+      router.push(data.role === 'Admin' ? '/admin' : '/pos');
+      return;
+    }
 
-      const fail = failRes.ok ? failJson.result : null;
+    setLoading(false);
+    setPin('');
 
+    // Total lockdown
+    if (res.status === 423) {
+      setErrorMsg(data.error || '🔒 Account is in TOTAL LOCKDOWN. Contact Admin to reset.');
+      return;
+    }
+
+    // Cool-off timer on the account
+    if (res.status === 429 && data.cooldownSeconds) {
+      setCooldownRemaining(data.cooldownSeconds);
+      setErrorMsg(`⏳ Cool off active. Please wait ${formatTime(data.cooldownSeconds)}.`);
+      return;
+    }
+
+    // Too many wrong PINs from this network, or the sign-in service is busy
+    if (res.status === 429 || res.status === 503) {
+      setErrorMsg(data.error || 'Too many attempts. Please wait a while and try again.');
+      return;
+    }
+
+    // Wrong username or PIN
+    if (res.status === 401) {
       let msg = 'Invalid Username or PIN';
+      const attempts: number | null = data.attempts ?? null;
 
-      if (fail) {
-        const attempts = fail.new_attempts;
-        if (fail.is_total_lock) {
-          msg = '🔒 6 Failed attempts! Contact Admin to reset.';
-        } else if (attempts === 3) {
-          msg = '⚠️ 3 Failed attempts!';
-          setCooldownRemaining(fail.lockout_seconds);
-        } else if (attempts === 4) {
-          msg = '⚠️ 4 Failed attempts!';
-          setCooldownRemaining(fail.lockout_seconds);
-        } else if (attempts === 5) {
-          msg = '🚨 5 Failed attempts!';
-          setCooldownRemaining(fail.lockout_seconds);
-        } else if (attempts > 0) {
-          msg = `❌ Incorrect PIN (${6 - attempts} attempts remaining before Total Lockdown)`;
-        }
+      if (data.isTotalLock) {
+        msg = '🔒 6 Failed attempts! Contact Admin to reset.';
+      } else if (attempts === 3) {
+        msg = '⚠️ 3 Failed attempts!';
+        setCooldownRemaining(data.lockoutSeconds || 0);
+      } else if (attempts === 4) {
+        msg = '⚠️ 4 Failed attempts!';
+        setCooldownRemaining(data.lockoutSeconds || 0);
+      } else if (attempts === 5) {
+        msg = '🚨 5 Failed attempts!';
+        setCooldownRemaining(data.lockoutSeconds || 0);
+      } else if (attempts && attempts > 0) {
+        msg = `❌ Incorrect PIN (${6 - attempts} attempts remaining before Total Lockdown)`;
       }
 
-      setLoading(false);
-      setPin('');
       setErrorMsg(msg);
       return;
     }
 
-    // 6. Successful login -> reset lockout counters (runs as the now-authenticated user)
-    await supabase.rpc('record_successful_login');
-
-    // 7. Load profile to know where to route
-    const { data: profile } = await supabase
-      .from('staff')
-      .select('id, name, role')
-      .eq('id', signInData.session.user.id)
-      .maybeSingle();
-
-    setLoading(false);
-
-    router.push(profile?.role === 'Admin' ? '/admin' : '/pos');
+    setErrorMsg(data.error || 'Something went wrong. Please try again.');
   };
 
   // Enable button once user types at least 2 characters in both fields
@@ -162,6 +141,12 @@ export default function LoginPage() {
           </h1>
           <p className="text-xs text-slate-400">Enter your credentials to unlock register</p>
         </div>
+
+        {idleNotice && (
+          <p className="text-xs text-amber-300 text-center bg-amber-500/10 p-2.5 rounded-lg border border-amber-500/30">
+            You were logged out because of inactivity. Please sign in again.
+          </p>
+        )}
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>

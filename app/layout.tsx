@@ -1,6 +1,7 @@
 import './globals.css';
 import { headers } from 'next/headers';
 import DeviceGuard from '../components/DeviceGuard';
+import IdleLogout from '../components/IdleLogout';
 import { Analytics } from '@vercel/analytics/next';
 import { CartProvider } from '../contexts/CartContext';
 import type { Viewport } from 'next';
@@ -25,6 +26,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <CartProvider>
           <DeviceGuard skip={skipDeviceGuard}>{children}</DeviceGuard>
         </CartProvider>
+        {!skipDeviceGuard && <IdleLogout />}
         <Analytics />
       </body>
     </html>

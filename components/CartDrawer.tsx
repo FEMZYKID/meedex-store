@@ -35,6 +35,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [acceptedPolicy, setAcceptedPolicy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -85,6 +86,11 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
     if (phone.length !== PHONE_LENGTH) {
       setErrorMessage(`Please enter a valid ${PHONE_LENGTH}-digit phone number (digits only).`);
+      return;
+    }
+
+    if (!acceptedPolicy) {
+      setErrorMessage('Please tick the box to confirm you have read the Refund & Replacement Policy.');
       return;
     }
 
@@ -320,9 +326,30 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               </p>
             </div>
 
+            <label className="flex items-start gap-2 text-[11px] text-gray-700 leading-snug cursor-pointer">
+              <input
+                type="checkbox"
+                checked={acceptedPolicy}
+                onChange={(e) => setAcceptedPolicy(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-indigo-700 shrink-0"
+              />
+              <span>
+                I have read and agree to the{' '}
+                <a
+                  href="/policy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-indigo-700 font-semibold underline"
+                >
+                  Refund &amp; Replacement Policy
+                </a>
+                .
+              </span>
+            </label>
+
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !acceptedPolicy}
               className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold rounded-lg shadow-md transition disabled:bg-gray-300 text-sm"
             >
               {loading ? 'Processing...' : 'Pay Now with Paystack'}

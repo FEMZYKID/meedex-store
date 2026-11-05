@@ -13,13 +13,13 @@ import { getAvailableStock } from '../lib/stock';
 import { useProducts } from '../hooks/useProducts';
 import { useCategories } from '../hooks/useCategories';
 import { useCategoryBrowser } from '../hooks/useCategoryBrowser';
-import type { Product, CartItem, SaleItem, Sale, CurrentUser } from '../types';
+import type { Product, CartItem, Sale, CurrentUser } from '../types';
 
 export default function PosPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
-  const { products, setProducts, loadingProducts, fetchProducts } = useProducts();
+  const { products, loadingProducts, fetchProducts } = useProducts();
   const { categoryList, fetchCategories } = useCategories();
   const browser = useCategoryBrowser(products, categoryList);
 
@@ -141,7 +141,7 @@ export default function PosPage() {
     setLoadingSales(true);
     const { start, end } = getDateRange();
 
-    let query = supabase
+    const query = supabase
       .from('sales')
       .select('*, sale_items(*, products(sku, image_url))')
       .gte('created_at', start.toISOString())
@@ -580,42 +580,47 @@ export default function PosPage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans flex flex-col">
-      <header className="bg-slate-950 border-b border-slate-800 px-6 py-4 flex justify-between items-center">
-        <div className="flex items-center gap-3">
+      {/* Header: stacks on phones (logo + title on top, buttons wrap below) */}
+      <header className="bg-slate-950 border-b border-slate-800 px-3 sm:px-6 py-3 sm:py-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-3 min-w-0">
           <img
             src="/logo.png"
             alt="MEEDEX Logo"
-            className="w-10 h-10 object-contain rounded-xl bg-slate-900 border border-cyan-500/40 p-1"
+            className="w-10 h-10 shrink-0 object-contain rounded-xl bg-slate-900 border border-cyan-500/40 p-1"
           />
-          <div>
-            <h1 className="text-lg font-black text-white tracking-wider uppercase">
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-lg font-black text-white tracking-wider uppercase truncate">
               MEEDEX <span className="text-cyan-400">GADGETS</span>
             </h1>
-            <div className="flex items-center gap-2">
-              <p className="text-[10px] text-cyan-400/80 italic tracking-wide">Gadgets. Innovation. Solutions</p>
-              <span className="text-[10px] text-slate-500">| Cashier: {currentUser.name}</span>
+            <div className="flex items-center gap-x-2 flex-wrap">
+              <p className="hidden sm:block text-[10px] text-cyan-400/80 italic tracking-wide">
+                Gadgets. Innovation. Solutions
+              </p>
+              <span className="text-[10px] text-slate-500">
+                <span className="hidden sm:inline">| </span>Cashier: {currentUser.name}
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/finance"
-            className="bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/30 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-950/50"
+            className="bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/30 px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap shadow-lg shadow-emerald-950/50"
           >
             📊 Income / Expense
           </Link>
 
           <Link
             href="/online-orders"
-            className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+            className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
           >
             🛒 Online Orders
           </Link>
 
           <button
             onClick={() => setShowReturnModal(true)}
-            className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer"
+            className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer whitespace-nowrap"
           >
             🔄 Return Item
           </button>
@@ -623,22 +628,22 @@ export default function PosPage() {
           {currentUser.role === 'Admin' && (
             <Link
               href="/admin"
-              className="bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-3.5 py-1.5 rounded-lg text-xs font-bold transition"
+              className="bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition whitespace-nowrap"
             >
               ⚙️ Admin Panel
             </Link>
           )}
           <button
             onClick={handleLogout}
-            className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer"
+            className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer whitespace-nowrap"
           >
             Logout
           </button>
         </div>
       </header>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 p-6">
-        <div className="lg:col-span-2 flex flex-col gap-6">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 p-3 sm:p-6">
+        <div className="lg:col-span-2 flex flex-col gap-6 min-w-0">
           <CategoryBrowserBar browser={browser} variant="dark" showSearch />
 
           {loadingProducts ? (
@@ -655,7 +660,7 @@ export default function PosPage() {
                     {section.name}{' '}
                     <span className="text-slate-500 font-normal">({section.items.length})</span>
                   </h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
                     {section.items.map((product) => renderProductCard(product))}
                   </div>
                 </div>
@@ -663,7 +668,7 @@ export default function PosPage() {
             </div>
           )}
 
-          <div className="bg-slate-800 border border-slate-700/80 p-5 rounded-2xl shadow-xl">
+          <div className="bg-slate-800 border border-slate-700/80 p-4 sm:p-5 rounded-2xl shadow-xl">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-4 pb-3 border-b border-slate-700">
               <div>
                 <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -745,7 +750,7 @@ export default function PosPage() {
                     className="bg-slate-900 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-3 text-xs"
                   >
                     <div className="flex flex-col md:flex-row justify-between md:items-center gap-3">
-                      <div className="space-y-1">
+                      <div className="space-y-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-bold text-white text-sm">₦{Number(sale.total_amount).toLocaleString()}</span>
                           <span className="text-[10px] bg-slate-800 border border-slate-700 px-2 py-0.5 rounded text-cyan-400 font-semibold">
@@ -756,9 +761,9 @@ export default function PosPage() {
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-2 text-[11px] font-mono bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 w-fit flex-wrap">
+                        <div className="flex items-center gap-2 text-[11px] font-mono bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 w-fit max-w-full flex-wrap">
                           <span className="text-slate-500 font-bold select-none">Sale ID:</span>
-                          <span className="text-cyan-300 font-bold select-all">{sale.id}</span>
+                          <span className="text-cyan-300 font-bold select-all break-all">{sale.id}</span>
                           <button
                             onClick={() => copyToClipboard(sale.id)}
                             className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700 transition cursor-pointer"
@@ -840,7 +845,7 @@ export default function PosPage() {
           </div>
         </div>
 
-        <div className="bg-slate-800 border border-slate-700/80 p-5 rounded-2xl flex flex-col justify-between shadow-xl h-fit sticky top-6">
+        <div className="bg-slate-800 border border-slate-700/80 p-4 sm:p-5 rounded-2xl flex flex-col justify-between shadow-xl h-fit lg:sticky lg:top-6 min-w-0">
           <div>
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-700">
               <h2 className="text-base font-bold text-white flex items-center gap-2">
@@ -866,9 +871,9 @@ export default function PosPage() {
                     key={item.id}
                     className="bg-slate-900 p-3 rounded-xl border border-slate-700/60 flex flex-col gap-2 text-xs"
                   >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-bold text-white">{item.name}</p>
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="min-w-0">
+                        <p className="font-bold text-white break-words">{item.name}</p>
                         <div className="flex items-center gap-1 mt-1">
                           <span className="text-[10px] text-amber-400 font-semibold">Price: ₦</span>
                           <input
@@ -881,7 +886,7 @@ export default function PosPage() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 shrink-0">
                         <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-950">
                           <button
                             onClick={() => updateCartQuantity(item.id, -1)}

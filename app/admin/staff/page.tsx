@@ -20,21 +20,26 @@ export default function AdminStaffPage() {
   const [newStaffPin, setNewStaffPin] = useState('');
   const [newStaffRole, setNewStaffRole] = useState<'Admin' | 'Cashier'>('Cashier');
 
+  // Goes through the server, which confirms the reset really happened
   const handleUnlockStaff = async (id: string, name: string) => {
-    const { error } = await supabase
-      .from('staff')
-      .update({
-        failed_attempts: 0,
-        lockout_until: null,
-        is_locked: false,
-      })
-      .eq('id', id);
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch('/api/staff', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({ id, action: 'unlock' }),
+    });
 
-    if (error) alert('Error unlocking staff: ' + error.message);
-    else {
-      alert(`Lockout reset for ${name}!`);
-      await fetchStaff();
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert('Error unlocking staff: ' + (result.error || 'Unknown error'));
+      return;
     }
+    alert(`Lockout reset for ${name}!`);
+    await fetchStaff();
   };
 
   const handleAddStaff = async (e: React.FormEvent) => {
@@ -130,7 +135,7 @@ export default function AdminStaffPage() {
         </div>
 
         <div>
-          <label className="block text-slate-400 mb-1">PIN / Password (min. 6 digits)</label>
+          <label className="block text-slate-400 mb-1">PIN / Password (min. 6 characters)</label>
           <input
             type="password"
             required

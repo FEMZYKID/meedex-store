@@ -1,94 +1,203 @@
 // app/api/login/route.ts
 //
-// The pre-auth lockout check and failed-attempt recording used to be
-// callable directly from the browser (as anon). That meant 6 raw HTTP
-// requests — no valid credentials needed — could permanently lock the
-// Admin account. This route is now the ONLY way to reach those two
-// functions: anon's direct execute permission on them has been revoked
-// in the database, and this route rate-limits by IP before calling them
-// with the service role key.
-//
-// NOTE on the rate limiter: this is an in-memory Map, which is
-// best-effort on Vercel's serverless platform — it resets on cold starts
-// and isn't shared across parallel instances, so it won't stop a
-// sophisticated, distributed attacker. It DOES stop the common case: a
-// simple script hammering this endpoint from one machine. For airtight
-// protection, move this to Vercel KV / Upstash Redis, and/or enable
-// CAPTCHA on Supabase's Email provider (Dashboard → Authentication).
-
+// Server-side sign-in. The browser sends the username and PIN here. This
+// route checks the account lockout, verifies the PIN with Supabase Auth,
+// records failures itself, and only then hands back a session.
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '../../../lib/supabaseAdmin';
 
-// Lazily constructed — NOT at module top-level. Next.js briefly loads every
-// API route module during `next build` to collect its metadata, which means
-// top-level code runs at BUILD time, not just at request time. On a local
-// machine (or any CI) without SUPABASE_SERVICE_ROLE_KEY set, constructing
-// the client eagerly here crashed the build with "supabaseUrl is required."
-// Deferring construction until a real request comes in avoids that entirely.
-let supabaseAdmin: SupabaseClient | null = null;
+const NETWORK_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+const MAX_FAILS_PER_NETWORK = 20; // wrong PINs per network per window
+const FAIL_DECAY_MS = 24 * 60 * 60 * 1000; // failed attempts expire after 24h of quiet
 
-function getSupabaseAdmin() {
-  if (!supabaseAdmin) {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-  }
-  return supabaseAdmin;
+// Best-effort, in memory (resets on redeploys and cold starts). Only wrong
+// PINs count, so normal logins never use up this budget.
+const failMap = new Map<string, { count: number; windowStart: number }>();
+
+function getIp(req: NextRequest) {
+  return (
+    req.headers.get('x-real-ip') ||
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    'unknown'
+  );
 }
 
-const rateLimitMap = new Map<string, { count: number; windowStart: number }>();
-const WINDOW_MS = 10 * 60 * 1000; // 10 minutes
-const MAX_REQUESTS = 8; // generous enough for real mistyped-PIN attempts, tight for scripted abuse
-
-function isRateLimited(ip: string) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-
-  if (!entry || now - entry.windowStart > WINDOW_MS) {
-    rateLimitMap.set(ip, { count: 1, windowStart: now });
-    return false;
+function pruneExpired(now: number) {
+  if (failMap.size < 500) return;
+  for (const [key, value] of failMap) {
+    if (now - value.windowStart > NETWORK_WINDOW_MS) failMap.delete(key);
   }
+}
 
-  entry.count += 1;
-  return entry.count > MAX_REQUESTS;
+function networkWaitSeconds(ip: string): number {
+  const entry = failMap.get(ip);
+  if (!entry) return 0;
+  const now = Date.now();
+  if (now - entry.windowStart > NETWORK_WINDOW_MS) {
+    failMap.delete(ip);
+    return 0;
+  }
+  if (entry.count < MAX_FAILS_PER_NETWORK) return 0;
+  return Math.max(1, Math.ceil((entry.windowStart + NETWORK_WINDOW_MS - now) / 1000));
+}
+
+function recordNetworkFail(ip: string) {
+  const now = Date.now();
+  pruneExpired(now);
+  const entry = failMap.get(ip);
+  if (!entry || now - entry.windowStart > NETWORK_WINDOW_MS) {
+    failMap.set(ip, { count: 1, windowStart: now });
+  } else {
+    entry.count += 1;
+  }
+}
+
+// A fresh, stateless client for checking the PIN (nothing is stored on the server).
+function getAuthClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+interface FailResult {
+  new_attempts?: number;
+  is_total_lock?: boolean;
+  lockout_seconds?: number;
 }
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const ip = getIp(req);
 
-  if (isRateLimited(ip)) {
+  const wait = networkWaitSeconds(ip);
+  if (wait > 0) {
     return NextResponse.json(
-      { error: 'Too many attempts from this network. Please wait a while and try again.' },
+      {
+        error: `Too many failed attempts from this network. Please try again in ${Math.ceil(wait / 60)} minute(s).`,
+        retryAfterSeconds: wait,
+      },
       { status: 429 }
     );
   }
 
-  const { action, username } = await req.json();
-
-  if (!username || typeof username !== 'string') {
-    return NextResponse.json({ error: 'Username is required.' }, { status: 400 });
+  let body: { username?: unknown; pin?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid request.' }, { status: 400 });
   }
 
-  const cleanUsername = username.trim().toLowerCase();
-  const supabaseAdminClient = getSupabaseAdmin();
+  const username = String(body?.username ?? '').trim().toLowerCase().slice(0, 50);
+  const pin = String(body?.pin ?? '').trim().slice(0, 200);
+  if (!username || !pin) {
+    return NextResponse.json({ error: 'Username and PIN are required.' }, { status: 400 });
+  }
 
-  if (action === 'status') {
-    const { data, error } = await supabaseAdminClient.rpc('get_staff_lockout_status', {
-      p_username: cleanUsername,
+  const admin = getSupabaseAdmin();
+
+  const { data: staff, error: staffErr } = await admin
+    .from('staff')
+    .select('id, role, is_locked, lockout_until, failed_attempts, last_failed_at')
+    .eq('username', username)
+    .maybeSingle();
+
+  if (staffErr) {
+    console.error('[login] staff lookup failed:', staffErr.message);
+    return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 });
+  }
+
+  if (!staff) {
+    recordNetworkFail(ip);
+    return NextResponse.json({ error: 'Invalid Username or PIN' }, { status: 401 });
+  }
+
+  if (staff.is_locked) {
+    return NextResponse.json(
+      { error: '🔒 Account is in TOTAL LOCKDOWN. Contact Admin to reset.', locked: true },
+      { status: 423 }
+    );
+  }
+
+  if (staff.lockout_until) {
+    const secs = Math.ceil((new Date(staff.lockout_until).getTime() - Date.now()) / 1000);
+    if (secs > 0) {
+      return NextResponse.json(
+        { error: 'Cool off active.', cooldownSeconds: secs },
+        { status: 429 }
+      );
+    }
+  }
+
+  // Old failures expire after a quiet period, so occasional typos don't pile up forever.
+  const priorFails = staff.failed_attempts ?? 0;
+  if (
+    priorFails > 0 &&
+    (!staff.last_failed_at || Date.now() - new Date(staff.last_failed_at).getTime() > FAIL_DECAY_MS)
+  ) {
+    await admin.from('staff').update({ failed_attempts: 0, lockout_until: null }).eq('id', staff.id);
+  }
+
+  const authClient = getAuthClient();
+  const { data: signIn, error: signInErr } = await authClient.auth.signInWithPassword({
+    email: `${username}@deprince.pos`,
+    password: pin,
+  });
+
+  if (signInErr || !signIn?.session) {
+    // A busy or failing sign-in service is not the user's fault: don't count it.
+    if (signInErr && signInErr.status && (signInErr.status === 429 || signInErr.status >= 500)) {
+      console.error('[login] Supabase Auth unavailable:', signInErr.status, signInErr.message);
+      return NextResponse.json(
+        { error: 'The sign-in service is busy. Please try again in a moment.' },
+        { status: 503 }
+      );
+    }
+
+    recordNetworkFail(ip);
+
+    const { data: failData, error: failErr } = await admin.rpc('record_failed_login', {
+      p_username: username,
     });
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-    return NextResponse.json({ status: data?.[0] || null });
+    if (failErr) console.error('[login] record_failed_login failed:', failErr.message);
+
+    await admin
+      .from('staff')
+      .update({ last_failed_at: new Date().toISOString() })
+      .eq('id', staff.id);
+
+    const fail: FailResult | null = Array.isArray(failData) ? failData[0] ?? null : failData ?? null;
+
+    return NextResponse.json(
+      {
+        error: 'Invalid Username or PIN',
+        attempts: fail?.new_attempts ?? null,
+        isTotalLock: !!fail?.is_total_lock,
+        lockoutSeconds: fail?.lockout_seconds ?? 0,
+      },
+      { status: 401 }
+    );
   }
 
-  if (action === 'fail') {
-    const { data, error } = await supabaseAdminClient.rpc('record_failed_login', {
-      p_username: cleanUsername,
-    });
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-    return NextResponse.json({ result: data?.[0] || null });
+  if (signIn.user.id !== staff.id) {
+    console.error('[login] auth user does not match staff profile for', username);
+    return NextResponse.json({ error: 'This account has no staff profile.' }, { status: 403 });
   }
 
-  return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });
+  await admin
+    .from('staff')
+    .update({ failed_attempts: 0, lockout_until: null, is_locked: false, last_failed_at: null })
+    .eq('id', staff.id);
+
+  return NextResponse.json({
+    session: {
+      access_token: signIn.session.access_token,
+      refresh_token: signIn.session.refresh_token,
+    },
+    role: staff.role,
+  });
 }

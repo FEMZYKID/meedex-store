@@ -10,7 +10,7 @@ export default function DeveloperCredit({
   clearFloating?: boolean; // adds space below so a floating widget doesn't cover the credit
 }) {
   return (
-    <p
+    <div
       style={{
         textAlign: 'center',
         fontSize: 14,
@@ -18,15 +18,28 @@ export default function DeveloperCredit({
         padding: clearFloating ? '16px 0 96px' : '16px 0',
       }}
     >
-      Designed &amp; Built by{' '}
-      <a
-        href={`https://wa.me/${DEV_WHATSAPP}?text=${encodeURIComponent(message)}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ color: onDark ? '#FBBF24' : '#007bff', textDecoration: 'none', fontWeight: 'bold' }}
-      >
-        DePrince Tech
-      </a>
-    </p>
+      {/* The policy link only shows on the store (light) version, not the coming-soon page */}
+      {!onDark && (
+        <p style={{ margin: '0 0 8px' }}>
+          <a
+            href="/policy"
+            style={{ color: '#4338ca', textDecoration: 'underline', fontWeight: 600 }}
+          >
+            Refund &amp; Replacement Policy
+          </a>
+        </p>
+      )}
+      <p style={{ margin: 0 }}>
+        Designed &amp; Built by{' '}
+        <a
+          href={`https://wa.me/${DEV_WHATSAPP}?text=${encodeURIComponent(message)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: onDark ? '#FBBF24' : '#007bff', textDecoration: 'none', fontWeight: 'bold' }}
+        >
+          DePrince Tech
+        </a>
+      </p>
+    </div>
   );
 }
