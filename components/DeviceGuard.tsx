@@ -5,6 +5,9 @@ import React, { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { supabase } from '../lib/supabase';
 
+// Pages anyone can open without device approval (customer-facing pages).
+const PUBLIC_PATHS = ['/store', '/policy', '/maintenance'];
+
 export default function DeviceGuard({
   children,
   skip,
@@ -14,11 +17,14 @@ export default function DeviceGuard({
 }) {
   const pathname = usePathname();
   // The public storefront (customer-facing shopping site) must be reachable
-  // by anyone, instantly — device approval is a POS/admin-only concept for
+  // by anyone, instantly: device approval is a POS/admin-only concept for
   // staff hardware, not something a shopper should ever hit.
   // `skip` is set by the root layout on meedex.com.ng / www.meedex.com.ng
   // because those hosts rewrite "/" to the store (pathname stays "/").
-  const isPublicStorefront = skip || pathname?.startsWith('/store');
+  const isPublicPage = PUBLIC_PATHS.some(
+    (p) => pathname === p || pathname?.startsWith(`${p}/`)
+  );
+  const isPublicStorefront = skip || isPublicPage;
 
   const [deviceStatus, setDeviceStatus] = useState<'checking' | 'approved' | 'pending' | 'blocked'>('checking');
   const [deviceId, setDeviceId] = useState<string>('');
@@ -55,7 +61,7 @@ export default function DeviceGuard({
     return 'dev-' + uuid;
   };
 
-  // Wraps a promise so it can never hang forever — if it doesn't resolve
+  // Wraps a promise so it can never hang forever: if it doesn't resolve
   // within `ms`, we treat it as failed and move on. This protects against
   // devices/networks where the request to Supabase stalls instead of
   // cleanly erroring (which a plain try/catch can't catch on its own).
@@ -81,7 +87,7 @@ export default function DeviceGuard({
       const detectedName = getDeviceName();
       setDeviceName(detectedName);
 
-      // Ask only for THIS device's status via a narrow RPC — anon can no longer
+      // Ask only for THIS device's status via a narrow RPC: anon can no longer
       // list/browse the full allowed_devices table, only check one known ID.
       // Wrapped in an 8-second timeout so a stalled network request can never
       // freeze this screen forever.
@@ -98,7 +104,7 @@ export default function DeviceGuard({
       }
 
       if (!status) {
-        // Not registered yet — register it as pending (RLS forces status='pending'
+        // Not registered yet: register it as pending (RLS forces status='pending'
         // on insert regardless of what's sent here, so this can't self-approve)
         const { error: insertErr } = await withTimeout(
           supabase.from('allowed_devices').insert([

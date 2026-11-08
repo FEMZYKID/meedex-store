@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+const CUSTOMER_SITE = 'https://www.meedex.com.ng';
 const CUSTOMER_HOSTS = new Set(['meedex.com.ng', 'www.meedex.com.ng']);
 const STAFF_HOST = 'staff.meedex.com.ng';
 
@@ -49,6 +50,15 @@ export function proxy(request: NextRequest) {
   const host = hostnameOf(request);
   const { pathname } = request.nextUrl;
 
+  // On the LIVE deployment, the default *.vercel.app addresses send visitors
+  // to the real site. Preview deployments and localhost are not affected.
+  if (process.env.VERCEL_ENV === 'production' && host.endsWith('.vercel.app')) {
+    return NextResponse.redirect(
+      new URL(`${pathname}${request.nextUrl.search}`, CUSTOMER_SITE),
+      308
+    );
+  }
+
   // Localhost and Vercel preview: same routes as today, plus /pos → POS.
   if (isLocalOrPreview(host)) {
     if (pathname === '/pos' || pathname.startsWith('/pos/')) {
@@ -58,18 +68,19 @@ export function proxy(request: NextRequest) {
   }
 
   if (CUSTOMER_HOSTS.has(host)) {
-// ----- Maintenance Mode/ cOMING SOON SWTICH -----
-if (process.env.MAINTENANCE_MODE === 'true') {
-  const allowed =
-    pathname.startsWith('/api/webhooks/') ||
-    pathname === '/api/checkout' ||
-    pathname === '/api/health' ||
-    pathname === '/maintenance';
-  if (!allowed) {
-    return NextResponse.rewrite(new URL('/maintenance', request.url));
-  }
-}
-// ----- End Maintenance SWITCH -----
+    // --- Maintenance / coming soon switch ---
+    if (process.env.MAINTENANCE_MODE === 'true') {
+      const allowed =
+        pathname.startsWith('/api/webhooks/') ||
+        pathname === '/api/checkout' ||
+        pathname === '/api/health' ||
+        pathname === '/policy' ||
+        pathname === '/maintenance';
+      if (!allowed) {
+        return NextResponse.rewrite(new URL('/maintenance', request.url));
+      }
+    }
+    // --- end maintenance switch ---
 
     if (pathname === '/' || pathname === '') {
       return NextResponse.rewrite(new URL('/store', request.url));
