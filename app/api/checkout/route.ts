@@ -16,15 +16,17 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\d{11}$/;
 
+// Customers are limited by WEBSITE stock. Real stock is never read here.
 interface ProductRow {
   id: string;
   unit_price: number | null;
   adapter_price: number | null;
   cable_price: number | null;
   is_splittable: boolean | null;
-  stock_qty: number | null;
-  stock_adapter: number | null;
-  stock_cable: number | null;
+  show_on_website: boolean | null;
+  web_qty: number | null;
+  web_adapter: number | null;
+  web_cable: number | null;
 }
 
 interface Line {
@@ -42,11 +44,11 @@ function unitPriceFor(p: ProductRow, t: ItemType): number | null {
   return p.unit_price;
 }
 
-function availableFor(p: ProductRow, t: ItemType): number {
-  if (t === 'Adapter') return p.stock_adapter ?? 0;
-  if (t === 'Cable') return p.stock_cable ?? 0;
-  if (p.is_splittable) return Math.min(p.stock_adapter ?? 0, p.stock_cable ?? 0);
-  return p.stock_qty ?? 0;
+function webAvailableFor(p: ProductRow, t: ItemType): number {
+  if (t === 'Adapter') return p.web_adapter ?? 0;
+  if (t === 'Cable') return p.web_cable ?? 0;
+  if (p.is_splittable) return Math.min(p.web_adapter ?? 0, p.web_cable ?? 0);
+  return p.web_qty ?? 0;
 }
 
 export async function POST(req: Request) {
@@ -113,11 +115,13 @@ export async function POST(req: Request) {
       else wanted.set(key, { product_id: productId, item_type: itemType, quantity });
     }
 
-    // 2. Real prices and stock come from the database, never the browser
+    // 2. Real prices and website stock come from the database, never the browser
     const productIds = Array.from(new Set(Array.from(wanted.values()).map((w) => w.product_id)));
     const { data: products, error: productsErr } = await supabaseAdmin
       .from('products')
-      .select('id, unit_price, adapter_price, cable_price, is_splittable, stock_qty, stock_adapter, stock_cable')
+      .select(
+        'id, unit_price, adapter_price, cable_price, is_splittable, show_on_website, web_qty, web_adapter, web_cable'
+      )
       .in('id', productIds);
 
     if (productsErr || !products) {
@@ -132,7 +136,7 @@ export async function POST(req: Request) {
 
     for (const w of wanted.values()) {
       const product = byId.get(w.product_id);
-      if (!product) {
+      if (!product || !product.show_on_website) {
         return NextResponse.json({ error: 'One or more items are no longer available.' }, { status: 400 });
       }
       if (w.item_type !== 'Full Unit' && !product.is_splittable) {
@@ -142,8 +146,12 @@ export async function POST(req: Request) {
       if (price === null || !(Number(price) > 0)) {
         return NextResponse.json({ error: 'One or more items cannot be purchased right now.' }, { status: 400 });
       }
-      if (w.quantity > availableFor(product, w.item_type)) {
-        return NextResponse.json({ error: 'One or more items are out of stock or low on stock.' }, { status: 400 });
+      // Deliberately vague: customers are never told how much stock exists
+      if (w.quantity > webAvailableFor(product, w.item_type)) {
+        return NextResponse.json(
+          { error: 'Sorry, one or more items are not available in the quantity you chose. Please reduce the quantity or remove the item.' },
+          { status: 400 }
+        );
       }
       lines.push({ product_id: w.product_id, item_type: w.item_type, quantity: w.quantity, price: Number(price) });
     }
