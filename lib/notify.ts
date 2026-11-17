@@ -1,11 +1,15 @@
 // lib/notify.ts
-// Staff alerts: Telegram (instant) plus email (backup). Both are best-effort
-// and never throw, so a failed alert can't affect an order.
+// Staff alerts through Telegram. New orders and new reviews go to Telegram
+// only. Serious problems (a refund that must be done by hand, a payment
+// amount mismatch) still send an email too, as a backup. Everything is
+// best-effort and never throws, so a failed alert can't affect an order.
 import { sendEmail } from './email';
+import { getSupabaseAdmin } from './supabaseAdmin';
 import type { OrderForEmail, OrderItemForEmail } from './orderEmails';
 
 interface OrderForNotify extends OrderForEmail {
   customer_phone?: string | null;
+  needs_sourcing?: boolean | null;
 }
 
 const STAFF_SITE = process.env.STAFF_SITE_URL || 'https://staff.meedex.com.ng';
@@ -55,10 +59,37 @@ async function sendStaffEmail(subject: string, text: string): Promise<boolean> {
   return result.success;
 }
 
-export async function notifyStaff(subject: string, text: string) {
-  await Promise.allSettled([sendTelegram(`${subject}\n\n${text}`), sendStaffEmail(subject, text)]);
+// Telegram always. Email too, unless you pass { email: false }.
+export async function notifyStaff(subject: string, text: string, options: { email?: boolean } = {}) {
+  const tasks: Promise<boolean>[] = [sendTelegram(`${subject}\n\n${text}`)];
+  if (options.email !== false) tasks.push(sendStaffEmail(subject, text));
+  await Promise.allSettled(tasks);
 }
 
+// Which items the stock on hand did not cover
+async function sourcingLines(orderId: string): Promise<string[]> {
+  try {
+    const { data } = await getSupabaseAdmin()
+      .from('order_items')
+      .select('quantity, short_qty, item_type, products(name)')
+      .eq('order_id', orderId)
+      .gt('short_qty', 0);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (data || []).map((i: any) => {
+      const product = Array.isArray(i.products) ? i.products[0] : i.products;
+      const label = `${cut(product?.name || 'Item', 60)}${
+        i.item_type && i.item_type !== 'Full Unit' ? ` (${i.item_type})` : ''
+      }`;
+      return `• ${label}: short by ${i.short_qty} of ${i.quantity}`;
+    });
+  } catch (err) {
+    console.error('[notify] could not load sourcing lines:', err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+// New paid order: Telegram only (no email)
 export async function notifyNewOrder(order: OrderForNotify, items: OrderItemForEmail[]) {
   const total = Number(order.total_amount) + Number(order.delivery_fee || 0);
   const lines = items
@@ -85,6 +116,12 @@ export async function notifyNewOrder(order: OrderForNotify, items: OrderItemForE
     feeLine = 'Delivery fee: FREE';
   }
 
+  let sourcingBlock = '';
+  if (order.needs_sourcing) {
+    const short = await sourcingLines(order.id);
+    sourcingBlock = ['⚠️ NEEDS SOURCING: stock on hand does not cover this order.', ...short].join('\n');
+  }
+
   const text = [
     `Order #${order.id.slice(0, 8)} is paid and waiting for confirmation.`,
     '',
@@ -94,6 +131,8 @@ export async function notifyNewOrder(order: OrderForNotify, items: OrderItemForE
     '',
     lines,
     '',
+    sourcingBlock,
+    sourcingBlock ? '' : '',
     `Total paid: ${naira(total)}`,
     feeLine,
     '',
@@ -102,5 +141,6 @@ export async function notifyNewOrder(order: OrderForNotify, items: OrderItemForE
     .filter((line, idx, arr) => line !== '' || arr[idx - 1] !== '')
     .join('\n');
 
-  await notifyStaff(`🛒 New online order - ${naira(total)}`, text);
+  const subjectPrefix = order.needs_sourcing ? '⚠️ Needs sourcing - ' : '';
+  await notifyStaff(`🛒 ${subjectPrefix}New online order - ${naira(total)}`, text, { email: false });
 }

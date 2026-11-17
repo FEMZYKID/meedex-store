@@ -29,6 +29,7 @@ export interface OrderForEmail {
   total_amount: number;
   delivery_fee: number | null;
   cancellation_reason?: string | null;
+  review_token?: string | null;
 }
 
 export interface OrderItemForEmail {
@@ -130,6 +131,18 @@ function orderDetails(order: OrderForEmail, items: OrderItemForEmail[], showFeeN
     ${feeNote}`;
 }
 
+// "Rate your purchase" button, tied to this one order by a private token
+function reviewBlock(order: OrderForEmail) {
+  if (!order.review_token) return '';
+  const link = `${SITE_URL}/review?t=${encodeURIComponent(order.review_token)}`;
+  return `
+    <div style="margin-top:20px;padding:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;text-align:center;">
+      <p style="font-size:14px;margin:0 0 10px;font-weight:bold;">How was your order?</p>
+      <a href="${link}" style="display:inline-block;background:#f59e0b;color:#1f2937;text-decoration:none;font-weight:bold;font-size:14px;padding:10px 20px;border-radius:8px;">★ Rate your purchase</a>
+      <p style="font-size:12px;color:#6b7280;margin:10px 0 0;">Your review helps other shoppers. It appears on the store after we approve it.</p>
+    </div>`;
+}
+
 export function buildOrderEmail(stage: OrderEmailStage, order: OrderForEmail, items: OrderItemForEmail[]) {
   const name = esc(order.customer_name) || 'there';
   const isPickup = order.delivery_method === 'pickup';
@@ -192,7 +205,7 @@ export function buildOrderEmail(stage: OrderEmailStage, order: OrderForEmail, it
         subject: isPickup ? 'Order picked up — thank you!' : 'Order delivered — thank you!',
         html: shell(
           isPickup ? 'Your order has been picked up' : 'Your order has been delivered',
-          `<p style="font-size:14px;">Hi ${name}, thank you for shopping with Meedex Gadgets! We hope you enjoy your purchase.</p>${detailsFor(false)}`
+          `<p style="font-size:14px;">Hi ${name}, thank you for shopping with Meedex Gadgets! We hope you enjoy your purchase.</p>${detailsFor(false)}${reviewBlock(order)}`
         ),
       };
   }

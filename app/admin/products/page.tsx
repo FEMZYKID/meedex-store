@@ -11,6 +11,41 @@ import { useCategories } from '../../../hooks/useCategories';
 import { useCategoryBrowser } from '../../../hooks/useCategoryBrowser';
 import type { Product, Category } from '../../../types';
 
+const EMPTY_FORM = {
+  name: '',
+  sku: '',
+  category: '',
+  unit_price: '',
+  is_splittable: false,
+  adapter_price: '',
+  cable_price: '',
+  stock_adapter: '0',
+  stock_cable: '0',
+  stock_qty: '0',
+  web_adapter: '0',
+  web_cable: '0',
+  web_qty: '0',
+  show_on_website: true,
+  image_url: '',
+};
+
+// Real stock below zero means customers ordered more than we have on hand
+function realStock(label: string, value: number | null | undefined) {
+  const n = Number(value ?? 0);
+  if (n < 0) {
+    return (
+      <span className="text-rose-400 font-bold">
+        {label} {n} (to source: {Math.abs(n)})
+      </span>
+    );
+  }
+  return (
+    <span>
+      {label} {n}
+    </span>
+  );
+}
+
 export default function AdminProductsPage() {
   const { products, loadingProducts, fetchProducts } = useProducts();
   const { categoryList, loadingCategories, fetchCategories } = useCategories();
@@ -25,19 +60,7 @@ export default function AdminProductsPage() {
 
   const [savingProduct, setSavingProduct] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
-  const [productForm, setProductForm] = useState({
-    name: '',
-    sku: '',
-    category: '',
-    unit_price: '',
-    is_splittable: false,
-    adapter_price: '',
-    cable_price: '',
-    stock_adapter: '0',
-    stock_cable: '0',
-    stock_qty: '0',
-    image_url: '',
-  });
+  const [productForm, setProductForm] = useState(EMPTY_FORM);
 
   const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
   const [newCategoryInput, setNewCategoryInput] = useState('');
@@ -148,7 +171,7 @@ export default function AdminProductsPage() {
   // top-level if `newParentId` is null. Placed at the end of its new
   // sibling group. Two-level hierarchy is enforced by the dropdown only
   // ever offering top-level categories (with no children of their own) as
-  // a parent choice — see the "Assign to" select below.
+  // a parent choice.
   const handleChangeParent = async (catId: string, newParentId: string | null) => {
     const newSiblings = categoryList.filter((c) => (c.parent_id || null) === newParentId && c.id !== catId);
     const nextOrder = newSiblings.length > 0 ? Math.max(...newSiblings.map((c) => c.sort_order)) + 1 : 1;
@@ -167,19 +190,7 @@ export default function AdminProductsPage() {
     setEditingProductId(null);
     setIsAddingNewCategory(false);
     setNewCategoryInput('');
-    setProductForm({
-      name: '',
-      sku: '',
-      category: '',
-      unit_price: '',
-      is_splittable: false,
-      adapter_price: '',
-      cable_price: '',
-      stock_adapter: '0',
-      stock_cable: '0',
-      stock_qty: '0',
-      image_url: '',
-    });
+    setProductForm(EMPTY_FORM);
   };
 
   const handleEditProduct = (product: Product) => {
@@ -197,6 +208,10 @@ export default function AdminProductsPage() {
       stock_adapter: product.stock_adapter?.toString() || '0',
       stock_cable: product.stock_cable?.toString() || '0',
       stock_qty: product.stock_qty?.toString() || '0',
+      web_adapter: product.web_adapter?.toString() || '0',
+      web_cable: product.web_cable?.toString() || '0',
+      web_qty: product.web_qty?.toString() || '0',
+      show_on_website: product.show_on_website ?? true,
       image_url: product.image_url || '',
     });
   };
@@ -225,6 +240,8 @@ export default function AdminProductsPage() {
       finalSku = generateSKU(productForm.name, finalCategory, products);
     }
 
+    const whole = (v: string) => Math.max(0, Math.trunc(Number(v) || 0));
+
     const payload = {
       name: productForm.name,
       sku: finalSku,
@@ -233,9 +250,15 @@ export default function AdminProductsPage() {
       is_splittable: productForm.is_splittable,
       adapter_price: productForm.is_splittable ? Number(productForm.adapter_price) || 0 : null,
       cable_price: productForm.is_splittable ? Number(productForm.cable_price) || 0 : null,
+      // Real stock (backend only)
       stock_adapter: productForm.is_splittable ? Number(productForm.stock_adapter) || 0 : null,
       stock_cable: productForm.is_splittable ? Number(productForm.stock_cable) || 0 : null,
       stock_qty: productForm.is_splittable ? null : Number(productForm.stock_qty) || 0,
+      // Website stock (what customers may order; never shown to them)
+      web_adapter: productForm.is_splittable ? whole(productForm.web_adapter) : null,
+      web_cable: productForm.is_splittable ? whole(productForm.web_cable) : null,
+      web_qty: productForm.is_splittable ? null : whole(productForm.web_qty),
+      show_on_website: productForm.show_on_website,
       image_url: productForm.image_url.trim() || null,
     };
 
@@ -263,8 +286,7 @@ export default function AdminProductsPage() {
 
   // Only top-level categories can be picked as a parent — a category that
   // is itself already a child can't have children of its own, which keeps
-  // the hierarchy to two levels, never three. A single parent can still
-  // have as many children as you like.
+  // the hierarchy to two levels, never three.
   const possibleParents = useMemo(() => categoryList.filter((c) => !c.parent_id), [categoryList]);
 
   // Categories a product may be filed under: subcategories, plus main
@@ -278,72 +300,99 @@ export default function AdminProductsPage() {
     return names;
   }, [categoryTree]);
 
-  const renderProductRow = (product: Product) => (
-    <div
-      key={product.id}
-      className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-center justify-between gap-4 shadow-md"
-    >
-      <div className="flex items-center gap-4">
-        {product.image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={product.image_url}
-            alt={product.name}
-            className="w-14 h-14 object-cover rounded-lg border border-slate-700"
-          />
-        ) : (
-          <div className="w-14 h-14 bg-slate-900 rounded-lg flex items-center justify-center text-slate-500 border border-slate-700">
-            🔌
-          </div>
-        )}
+  const websiteStockAllZero = productForm.is_splittable
+    ? Number(productForm.web_adapter) <= 0 && Number(productForm.web_cable) <= 0
+    : Number(productForm.web_qty) <= 0;
 
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold text-white text-sm">{product.name}</h3>
-            {product.category && (
-              <span className="text-[10px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 px-1.5 py-0.5 rounded uppercase">
-                {product.category}
-              </span>
-            )}
-            {product.is_splittable && (
-              <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded">
-                Splittable
-              </span>
-            )}
+  const renderProductRow = (product: Product) => {
+    const hidden = product.show_on_website === false;
+    return (
+      <div
+        key={product.id}
+        className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-center justify-between gap-4 shadow-md"
+      >
+        <div className="flex items-center gap-4 min-w-0">
+          {product.image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={product.image_url}
+              alt={product.name}
+              className="w-14 h-14 shrink-0 object-cover rounded-lg border border-slate-700"
+            />
+          ) : (
+            <div className="w-14 h-14 shrink-0 bg-slate-900 rounded-lg flex items-center justify-center text-slate-500 border border-slate-700">
+              🔌
+            </div>
+          )}
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-semibold text-white text-sm">{product.name}</h3>
+              {product.category && (
+                <span className="text-[10px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 px-1.5 py-0.5 rounded uppercase">
+                  {product.category}
+                </span>
+              )}
+              {product.is_splittable && (
+                <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded">
+                  Splittable
+                </span>
+              )}
+              {hidden ? (
+                <span className="text-[10px] bg-slate-700 text-slate-300 border border-slate-600 px-1.5 py-0.5 rounded">
+                  Hidden from website
+                </span>
+              ) : (
+                <span className="text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded">
+                  On website
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 font-mono">SKU: {product.sku || 'N/A'}</p>
+            <div className="text-xs font-bold text-emerald-400 mt-0.5">
+              ₦{Number(product.unit_price).toLocaleString()}
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Real stock:{' '}
+              {product.is_splittable ? (
+                <>
+                  {realStock('Adapter', product.stock_adapter)} · {realStock('Cable', product.stock_cable)}
+                </>
+              ) : (
+                realStock('', product.stock_qty)
+              )}
+            </p>
+            <p className="text-[11px] text-slate-500">
+              Website stock:{' '}
+              {product.is_splittable
+                ? `Adapter ${product.web_adapter ?? 0} · Cable ${product.web_cable ?? 0}`
+                : `${product.web_qty ?? 0}`}
+            </p>
           </div>
-          <p className="text-xs text-slate-400 font-mono">SKU: {product.sku || 'N/A'}</p>
-          <div className="text-xs font-bold text-emerald-400 mt-0.5">
-            ₦{Number(product.unit_price).toLocaleString()}
-          </div>
-          <p className="text-[11px] text-slate-400">
-            {product.is_splittable
-              ? `Stock: Adapter (${product.stock_adapter || 0}) | Cable (${product.stock_cable || 0})`
-              : `Stock: ${product.stock_qty || 0}`}
-          </p>
+        </div>
+
+        <div className="flex gap-2 shrink-0">
+          <button
+            onClick={() => handleEditProduct(product)}
+            className="bg-slate-700 hover:bg-slate-600 text-cyan-300 text-xs font-medium px-3 py-1.5 rounded transition cursor-pointer"
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => handleDeleteProduct(product.id, product.name)}
+            className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-medium px-3 py-1.5 rounded transition cursor-pointer"
+          >
+            Delete
+          </button>
         </div>
       </div>
-
-      <div className="flex gap-2">
-        <button
-          onClick={() => handleEditProduct(product)}
-          className="bg-slate-700 hover:bg-slate-600 text-cyan-300 text-xs font-medium px-3 py-1.5 rounded transition cursor-pointer"
-        >
-          Edit
-        </button>
-        <button
-          onClick={() => handleDeleteProduct(product.id, product.name)}
-          className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-medium px-3 py-1.5 rounded transition cursor-pointer"
-        >
-          Delete
-        </button>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <section className="bg-slate-800 border border-slate-700/80 p-5 rounded-2xl h-fit sticky top-6 shadow-xl">
+        <section className="bg-slate-800 border border-slate-700/80 p-5 rounded-2xl h-fit lg:sticky lg:top-6 shadow-xl">
           <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-700">
             <h2 className="text-base font-bold text-white">
               {editingProductId ? 'Edit Product' : 'Add New Product'}
@@ -528,41 +577,126 @@ export default function AdminProductsPage() {
               </div>
             )}
 
-            {productForm.is_splittable ? (
-              <div className="grid grid-cols-2 gap-3">
+            {/* REAL STOCK: backend only */}
+            <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700 space-y-2">
+              <p className="text-slate-300 font-semibold">Real stock <span className="text-slate-500 font-normal">(what you actually have; staff only)</span></p>
+              {productForm.is_splittable ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-400 mb-1">Adapter</label>
+                    <input
+                      type="number"
+                      required
+                      value={productForm.stock_adapter}
+                      onChange={(e) => setProductForm({ ...productForm, stock_adapter: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">Cable</label>
+                    <input
+                      type="number"
+                      required
+                      value={productForm.stock_cable}
+                      onChange={(e) => setProductForm({ ...productForm, stock_cable: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                    />
+                  </div>
+                </div>
+              ) : (
                 <div>
-                  <label className="block text-slate-400 mb-1">Adapter Stock</label>
+                  <label className="block text-slate-400 mb-1">Stock</label>
                   <input
                     type="number"
                     required
-                    value={productForm.stock_adapter}
-                    onChange={(e) => setProductForm({ ...productForm, stock_adapter: e.target.value })}
+                    value={productForm.stock_qty}
+                    onChange={(e) => setProductForm({ ...productForm, stock_qty: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
                   />
                 </div>
+              )}
+            </div>
+
+            {/* WEBSITE: what customers can order */}
+            <div className="bg-emerald-950/20 p-3 rounded-lg border border-emerald-500/30 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-emerald-300 font-semibold">Website</p>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={productForm.show_on_website}
+                    onChange={(e) => setProductForm({ ...productForm, show_on_website: e.target.checked })}
+                    className="w-4 h-4 accent-emerald-500 cursor-pointer"
+                  />
+                  <span className="text-slate-200 font-medium">Show on website</span>
+                </label>
+              </div>
+
+              <p className="text-[11px] text-slate-400">
+                Customers can order up to this many. They never see the number, and it can be more than your real stock
+                (extra units are flagged &quot;needs sourcing&quot; on the order).
+              </p>
+
+              {productForm.is_splittable ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-400 mb-1">Adapter (website)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      required
+                      value={productForm.web_adapter}
+                      onChange={(e) => setProductForm({ ...productForm, web_adapter: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">Cable (website)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      required
+                      value={productForm.web_cable}
+                      onChange={(e) => setProductForm({ ...productForm, web_cable: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                    />
+                  </div>
+                </div>
+              ) : (
                 <div>
-                  <label className="block text-slate-400 mb-1">Cable Stock</label>
+                  <label className="block text-slate-400 mb-1">Stock (website)</label>
                   <input
                     type="number"
+                    min={0}
                     required
-                    value={productForm.stock_cable}
-                    onChange={(e) => setProductForm({ ...productForm, stock_cable: e.target.value })}
+                    value={productForm.web_qty}
+                    onChange={(e) => setProductForm({ ...productForm, web_qty: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
                   />
                 </div>
-              </div>
-            ) : (
-              <div>
-                <label className="block text-slate-400 mb-1">Stock</label>
-                <input
-                  type="number"
-                  required
-                  value={productForm.stock_qty}
-                  onChange={(e) => setProductForm({ ...productForm, stock_qty: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
-                />
-              </div>
-            )}
+              )}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setProductForm((prev) => ({
+                    ...prev,
+                    web_qty: String(Math.max(0, Number(prev.stock_qty) || 0)),
+                    web_adapter: String(Math.max(0, Number(prev.stock_adapter) || 0)),
+                    web_cable: String(Math.max(0, Number(prev.stock_cable) || 0)),
+                  }))
+                }
+                className="text-[11px] text-emerald-300 hover:underline cursor-pointer"
+              >
+                Use real stock numbers
+              </button>
+
+              {productForm.show_on_website && websiteStockAllZero && (
+                <p className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded p-2">
+                  Website stock is 0, so customers will not see this product until you raise it.
+                </p>
+              )}
+            </div>
 
             <button
               type="submit"
@@ -574,7 +708,7 @@ export default function AdminProductsPage() {
           </form>
         </section>
 
-        <section className="lg:col-span-2">
+        <section className="lg:col-span-2 min-w-0">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
             <h2 className="text-base font-bold text-white">
               Inventory Products ({browser.totalCount})

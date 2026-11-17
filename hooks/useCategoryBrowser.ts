@@ -1,9 +1,13 @@
 import { useMemo, useState } from 'react';
-import type { Category, Product } from '../types';
+import type { Category } from '../types';
 import { buildCategoryTree, type CategoryNode } from '../lib/categoryTree';
-import { buildSections, parentsWithDirectProducts } from '../lib/categorySections';
+import {
+  buildSections,
+  parentsWithDirectProducts,
+  type Browsable,
+} from '../lib/categorySections';
 
-export function useCategoryBrowser(products: Product[], categoryList: Category[]) {
+export function useCategoryBrowser<T extends Browsable>(products: T[], categoryList: Category[]) {
   const [search, setSearch] = useState('');
   const [selectedParent, setSelectedParent] = useState<string | null>(null);
   const [selectedLeaf, setSelectedLeaf] = useState<string | null>(null);

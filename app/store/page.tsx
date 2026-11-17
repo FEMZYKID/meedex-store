@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useProducts } from '../../hooks/useProducts';
+import { useStoreProducts } from '../../hooks/useStoreProducts';
 import { useCategories } from '../../hooks/useCategories';
 import { useCategoryBrowser } from '../../hooks/useCategoryBrowser';
 import { useCart } from '../../contexts/CartContext';
@@ -10,64 +10,40 @@ import CartDrawer from '../../components/CartDrawer';
 import SupportWidget from '../../components/SupportWidget';
 import CategoryBrowserBar from '../../components/CategoryBrowserBar';
 import DeveloperCredit from '../../components/DeveloperCredit';
-import type { Product } from '../../types';
+import StarRating from '../../components/StarRating';
+import ProductDetailsModal from '../../components/ProductDetailsModal';
+import type { StoreProduct } from '../../types';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function ProductCard({ product, onAdd }: { product: Product; onAdd: (p: Product, opts?: any) => void }) {
-  if (product.is_splittable) {
-    const adapterStock = product.stock_adapter ?? 0;
-    const cableStock = product.stock_cable ?? 0;
-    const fullStock = Math.min(adapterStock, cableStock); // a Full Set needs one of each
+// No single order line can exceed this (the server enforces the real limits)
+const MAX_PER_LINE = 20;
 
-    const options = [
-      { label: 'Full Set', price: product.unit_price, stock: fullStock, itemType: 'Full Unit' as const },
-      { label: 'Adapter Only', price: product.adapter_price ?? 0, stock: adapterStock, itemType: 'Adapter' as const },
-      { label: 'Cable Only', price: product.cable_price ?? 0, stock: cableStock, itemType: 'Cable' as const },
-    ];
-
-    return (
-      <div className="bg-white border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between">
-        <div className="p-3">
-          <div className="w-full h-36 bg-gray-100 rounded flex items-center justify-center overflow-hidden mb-3">
-            {product.image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={product.image_url} alt={product.name} className="object-cover h-full w-full" />
-            ) : (
-              <span className="text-gray-400 text-xs">No Image</span>
-            )}
-          </div>
-          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">{product.category || 'General'}</p>
-          <h3 className="font-semibold text-gray-800 text-sm line-clamp-2 h-10">{product.name}</h3>
-        </div>
-
-        <div className="p-3 border-t bg-gray-50 space-y-1.5">
-          {options.map((opt) => (
-            <button
-              key={opt.itemType}
-              onClick={() => onAdd(product, { itemType: opt.itemType, price: opt.price, maxQuantity: opt.stock })}
-              disabled={opt.stock <= 0}
-              className={`w-full flex items-center justify-between px-2.5 py-2 rounded text-xs font-bold transition ${
-                opt.stock > 0
-                  ? 'bg-amber-500 hover:bg-amber-600 text-slate-900'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              <span>{opt.stock > 0 ? `+ Add ${opt.label}` : `${opt.label} — Out of Stock`}</span>
-              <span>₦{opt.price.toLocaleString()}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  const displayPrice = product.unit_price ?? 0;
-  const currentStock = product.stock_qty ?? 0;
-  const inStock = currentStock > 0;
+// Image, category, name and star rating. Tapping it opens the details popup.
+function CardTop({
+  product,
+  onOpen,
+  children,
+}: {
+  product: StoreProduct;
+  onOpen: () => void;
+  children?: React.ReactNode;
+}) {
+  const hasRatings = product.rating_count > 0 && product.rating_avg !== null;
 
   return (
-    <div className="bg-white border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between">
-      <div className="p-3">
+    <div className="p-3">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onOpen}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onOpen();
+          }
+        }}
+        aria-label={`View details and reviews for ${product.name}`}
+        className="cursor-pointer"
+      >
         <div className="w-full h-36 bg-gray-100 rounded flex items-center justify-center overflow-hidden mb-3">
           {product.image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -78,18 +54,74 @@ function ProductCard({ product, onAdd }: { product: Product; onAdd: (p: Product,
         </div>
         <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">{product.category || 'General'}</p>
         <h3 className="font-semibold text-gray-800 text-sm line-clamp-2 h-10">{product.name}</h3>
-        <p className="text-indigo-900 font-extrabold text-base mt-2">₦{displayPrice.toLocaleString()}</p>
+        <div className="h-4 mt-1 flex items-center gap-1">
+          {hasRatings ? (
+            <>
+              <StarRating rating={Number(product.rating_avg)} size={12} />
+              <span className="text-[10px] text-gray-500">({product.rating_count})</span>
+            </>
+          ) : (
+            <span className="text-[10px] text-gray-400">No reviews yet</span>
+          )}
+        </div>
       </div>
+      {children}
+    </div>
+  );
+}
+
+function ProductCard({
+  product,
+  onAdd,
+  onOpen,
+}: {
+  product: StoreProduct;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onAdd: (p: StoreProduct, opts?: any) => void;
+  onOpen: () => void;
+}) {
+  if (product.is_splittable) {
+    // Only the options customers can actually order are shown
+    const options = [
+      { label: 'Full Set', price: product.unit_price, ok: product.web_ok_full, itemType: 'Full Unit' as const },
+      { label: 'Adapter Only', price: product.adapter_price ?? 0, ok: product.web_ok_adapter, itemType: 'Adapter' as const },
+      { label: 'Cable Only', price: product.cable_price ?? 0, ok: product.web_ok_cable, itemType: 'Cable' as const },
+    ].filter((o) => o.ok);
+
+    return (
+      <div className="bg-white border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between">
+        <CardTop product={product} onOpen={onOpen} />
+
+        <div className="p-3 border-t bg-gray-50 space-y-1.5">
+          {options.map((opt) => (
+            <button
+              key={opt.itemType}
+              onClick={() => onAdd(product, { itemType: opt.itemType, price: opt.price, maxQuantity: MAX_PER_LINE })}
+              className="w-full flex items-center justify-between px-2.5 py-2 rounded text-xs font-bold transition bg-amber-500 hover:bg-amber-600 text-slate-900"
+            >
+              <span>+ Add {opt.label}</span>
+              <span>₦{opt.price.toLocaleString()}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const displayPrice = product.unit_price ?? 0;
+
+  return (
+    <div className="bg-white border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between">
+      <CardTop product={product} onOpen={onOpen}>
+        <p className="text-indigo-900 font-extrabold text-base mt-2">₦{displayPrice.toLocaleString()}</p>
+      </CardTop>
 
       <div className="p-3 border-t bg-gray-50">
         <button
-          onClick={() => onAdd(product, { itemType: 'Full Unit', price: displayPrice, maxQuantity: currentStock })}
-          disabled={!inStock}
-          className={`w-full py-2 rounded text-xs font-bold transition ${
-            inStock ? 'bg-amber-500 hover:bg-amber-600 text-slate-900' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-          }`}
+          onClick={() => onAdd(product, { itemType: 'Full Unit', price: displayPrice, maxQuantity: MAX_PER_LINE })}
+          className="w-full py-2 rounded text-xs font-bold transition bg-amber-500 hover:bg-amber-600 text-slate-900"
         >
-          {inStock ? 'Add to Cart' : 'Out of Stock'}
+          Add to Cart
         </button>
       </div>
     </div>
@@ -97,7 +129,7 @@ function ProductCard({ product, onAdd }: { product: Product; onAdd: (p: Product,
 }
 
 export default function StorefrontPage() {
-  const { products, loadingProducts, fetchProducts } = useProducts();
+  const { products, loadingProducts, fetchProducts } = useStoreProducts();
   const { categoryList, fetchCategories } = useCategories();
   const { addToCart, clearCart, totalItems } = useCart();
   const router = useRouter();
@@ -106,6 +138,7 @@ export default function StorefrontPage() {
 
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
+  const [detailsProduct, setDetailsProduct] = useState<StoreProduct | null>(null);
 
   useEffect(() => {
     fetchProducts();
@@ -180,7 +213,7 @@ export default function StorefrontPage() {
           Quality Gadgets at <span className="text-amber-400">Unbeatable Prices</span>
         </h2>
         <p className="text-slate-300 text-xs md:text-sm max-w-md mx-auto">
-          Instant online checkout powered by Paystack with live stock availability.
+          Instant online checkout powered by Paystack.
         </p>
       </section>
 
@@ -201,7 +234,12 @@ export default function StorefrontPage() {
                   </h2>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mt-3">
                     {section.items.map((product) => (
-                      <ProductCard key={product.id} product={product} onAdd={addToCart} />
+                      <ProductCard
+                        key={product.id}
+                        product={product}
+                        onAdd={addToCart}
+                        onOpen={() => setDetailsProduct(product)}
+                      />
                     ))}
                   </div>
                 </div>
@@ -210,6 +248,15 @@ export default function StorefrontPage() {
           )}
         </div>
       </main>
+
+      {detailsProduct && (
+        <ProductDetailsModal
+          product={detailsProduct}
+          maxPerLine={MAX_PER_LINE}
+          onClose={() => setDetailsProduct(null)}
+          onAdd={addToCart}
+        />
+      )}
 
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
       <SupportWidget />

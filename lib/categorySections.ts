@@ -1,10 +1,17 @@
-import type { Product } from '../types';
 import type { CategoryNode } from './categoryTree';
 
-export interface CategorySection {
+// The minimum a product needs to be grouped and searched
+export interface Browsable {
+  id: string;
+  name: string;
+  sku?: string | null;
+  category?: string | null;
+}
+
+export interface CategorySection<T extends Browsable = Browsable> {
   key: string;
   name: string;
-  items: Product[];
+  items: T[];
   isOther: boolean;
 }
 
@@ -12,7 +19,7 @@ export const otherKey = (parentId: string) => `other:${parentId}`;
 
 const norm = (s: string | null | undefined) => (s || '').trim().toLowerCase();
 
-export function productMatchesSearch(p: Product, query: string): boolean {
+export function productMatchesSearch(p: Browsable, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
   return p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q);
@@ -20,7 +27,7 @@ export function productMatchesSearch(p: Product, query: string): boolean {
 
 // Main categories that have subcategories AND still have products sitting
 // directly in them (these get an "Other <main>" custom section).
-export function parentsWithDirectProducts(products: Product[], tree: CategoryNode[]): Set<string> {
+export function parentsWithDirectProducts(products: Browsable[], tree: CategoryNode[]): Set<string> {
   const names = new Set(products.map((p) => norm(p.category)));
   const ids = new Set<string>();
   for (const parent of tree) {
@@ -29,16 +36,16 @@ export function parentsWithDirectProducts(products: Product[], tree: CategoryNod
   return ids;
 }
 
-export function buildSections(
-  products: Product[],
+export function buildSections<T extends Browsable>(
+  products: T[],
   tree: CategoryNode[],
   selectedParent: string | null,
   selectedLeaf: string | null,
   search: string
-): CategorySection[] {
+): CategorySection<T>[] {
   const visible = products.filter((p) => productMatchesSearch(p, search));
 
-  const byCategory = new Map<string, Product[]>();
+  const byCategory = new Map<string, T[]>();
   for (const p of visible) {
     const key = norm(p.category);
     const list = byCategory.get(key);
@@ -54,7 +61,7 @@ export function buildSections(
     for (const child of parent.children) known.add(norm(child.name));
   }
 
-  let sections: CategorySection[] = [];
+  let sections: CategorySection<T>[] = [];
   for (const parent of tree) {
     if (selectedParent && parent.id !== selectedParent) continue;
 

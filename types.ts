@@ -15,6 +15,47 @@ export interface Product {
   stock_qty?: number | null;
   stock_quantity?: number | null; // Alias for stock_qty (used in online storefront)
   image_url?: string;
+
+  // Website stock: what customers may order online (never shown to customers)
+  show_on_website?: boolean;
+  web_qty?: number | null;
+  web_adapter?: number | null;
+  web_cable?: number | null;
+  web_ok_full?: boolean;
+  web_ok_adapter?: boolean;
+  web_ok_cable?: boolean;
+
+  // Review summary (approved reviews only)
+  rating_avg?: number | null;
+  rating_count?: number;
+}
+
+// What the public store is allowed to see: no stock numbers at all.
+export interface StoreProduct {
+  id: string;
+  name: string;
+  sku: string | null;
+  category: string | null;
+  image_url: string | null;
+  unit_price: number;
+  adapter_price: number | null;
+  cable_price: number | null;
+  is_splittable: boolean;
+  show_on_website: boolean;
+  web_ok_full: boolean;
+  web_ok_adapter: boolean;
+  web_ok_cable: boolean;
+  rating_avg: number | null;
+  rating_count: number;
+}
+
+// An approved review as the public store sees it
+export interface PublicReview {
+  id: string;
+  rating: number;
+  comment: string | null;
+  reviewer_name: string;
+  created_at: string;
 }
 
 // Unified CartItem satisfying strict POS requirements and Storefront compatibility
