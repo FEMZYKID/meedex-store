@@ -7,13 +7,11 @@ import { supabase } from '../../lib/supabase';
 import { AdminAuthContext } from '../../contexts/AdminAuthContext';
 import type { CurrentUser } from '../../types';
 
-// NOTE: only /admin/sales exists as a real route so far — the other four
-// are being built one at a time in the following steps. Linking to them now
-// is fine (Next.js just 404s until each page exists); nothing breaks by
-// having the nav ready ahead of the pages themselves.
 const NAV_LINKS = [
   { href: '/admin/sales', label: 'Sales & Reports' },
   { href: '/admin/products', label: 'Products' },
+  { href: '/admin/reviews', label: 'Reviews' },
+  { href: '/admin/pending-orders', label: 'Pending Payments' },
   { href: '/admin/staff', label: 'Staff' },
   { href: '/admin/devices', label: 'Devices' },
   { href: '/admin/inventory-issues', label: 'Returns & Damage' },
@@ -76,9 +74,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="min-h-screen bg-slate-900 text-slate-100 p-6 font-sans">
         <header className="flex justify-between items-center border-b border-slate-800 pb-5 mb-6">
           <div className="flex items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/logo.png"
-              alt="DEPRINCE Logo"
+              alt="MEEDEX Logo"
               className="w-12 h-12 object-contain rounded-2xl bg-slate-950 border border-cyan-500/40 p-1 shadow-[0_0_15px_rgba(6,182,212,0.35)]"
             />
             <div>

@@ -206,7 +206,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Could not create order.' }, { status: 500 });
     }
 
-    // 4. Start the Paystack payment with the server-calculated amount
+    // 4. Start the Paystack payment with the server-calculated amount.
+    // The reference is built from the order id, so a payment can always be
+    // looked up later (Admin → Pending Payments).
     const amountToCharge = totalAmount + (deliveryFee || 0);
     const amountInKobo = Math.round(amountToCharge * 100);
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
@@ -220,6 +222,7 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         email: safeEmail,
         amount: amountInKobo,
+        reference: `mdx-${order.id}`,
         callback_url: `${siteUrl}/store?payment=success`,
         metadata: {
           order_id: order.id,
