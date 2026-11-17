@@ -15,6 +15,7 @@ interface Draft {
 }
 
 const MAX_COMMENT = 500;
+const EMPTY_DRAFT: Draft = { rating: 0, comment: '' };
 
 function StarInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -75,10 +76,10 @@ export default function ReviewPage() {
   }, []);
 
   const setDraft = (productId: string, patch: Partial<Draft>) =>
-    setDrafts((prev) => ({
-      ...prev,
-      [productId]: { rating: 0, comment: '', ...prev[productId], ...patch },
-    }));
+    setDrafts((prev) => {
+      const current = prev[productId] ?? EMPTY_DRAFT;
+      return { ...prev, [productId]: { ...current, ...patch } };
+    });
 
   const toReview = items.filter((i) => !i.already_reviewed);
   const rated = toReview.filter((i) => (drafts[i.product_id]?.rating || 0) > 0);
@@ -153,7 +154,7 @@ export default function ReviewPage() {
 
             <div className="space-y-4">
               {items.map((item) => {
-                const draft = drafts[item.product_id] || { rating: 0, comment: '' };
+                const draft = drafts[item.product_id] ?? EMPTY_DRAFT;
                 return (
                   <section key={item.product_id} className="bg-white border rounded-xl p-4">
                     <div className="flex items-center gap-3 mb-3">
