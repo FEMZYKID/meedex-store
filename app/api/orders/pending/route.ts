@@ -1,25 +1,14 @@
-// app/api/admin/pending-orders/route.ts
+// app/api/orders/pending/route.ts
 //
-// Admin tools for orders that are still "pending": checkouts where the
-// customer started to pay but no payment has been recorded.
+// Tools for orders that are still "pending": checkouts where the customer
+// started to pay but no payment has been recorded. Used by the
+// "Pending Payments" tab on the Online Orders page.
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../../lib/supabaseAdmin';
+import { requireStaff } from '../../../../lib/auth';
 import { processSuccessfulPayment, type PaystackTransaction } from '../../../../lib/orderPayments';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-async function requireAdmin(req: NextRequest) {
-  const admin = getSupabaseAdmin();
-  const token = (req.headers.get('authorization') || '').replace('Bearer ', '');
-  if (!token) return null;
-
-  const { data: { user }, error } = await admin.auth.getUser(token);
-  if (error || !user) return null;
-
-  const { data: profile } = await admin.from('staff').select('role').eq('id', user.id).maybeSingle();
-  if (profile?.role !== 'Admin') return null;
-  return user;
-}
 
 interface Verification {
   ok: boolean;
@@ -56,8 +45,8 @@ const SELECT =
   'id, created_at, customer_name, customer_phone, customer_email, total_amount, delivery_fee, delivery_method, order_items(quantity, price_at_purchase, item_type, products(name))';
 
 export async function GET(req: NextRequest) {
-  const user = await requireAdmin(req);
-  if (!user) return NextResponse.json({ error: 'Forbidden: Admins only.' }, { status: 403 });
+  const staff = await requireStaff(req);
+  if (!staff) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { data, error } = await getSupabaseAdmin()
     .from('orders')
@@ -74,8 +63,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const user = await requireAdmin(req);
-  if (!user) return NextResponse.json({ error: 'Forbidden: Admins only.' }, { status: 403 });
+  const staff = await requireStaff(req);
+  if (!staff) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
   const orderId = String(body?.orderId ?? '');

@@ -11,7 +11,6 @@ const NAV_LINKS = [
   { href: '/admin/sales', label: 'Sales & Reports' },
   { href: '/admin/products', label: 'Products' },
   { href: '/admin/reviews', label: 'Reviews' },
-  { href: '/admin/pending-orders', label: 'Pending Payments' },
   { href: '/admin/staff', label: 'Staff' },
   { href: '/admin/devices', label: 'Devices' },
   { href: '/admin/inventory-issues', label: 'Returns & Damage' },

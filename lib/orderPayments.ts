@@ -158,7 +158,7 @@ export async function processSuccessfulPayment(args: {
     );
     await notifyStaff(
       '🚨 Payment amount mismatch',
-      `Order #${orderId.slice(0, 8)}: Paystack shows amount ${tx.amount}, fees ${tx.fees ?? 'n/a'}, currency ${tx.currency}, but the order total is ${expected} (kobo). Reference ${reference}. The order was NOT marked paid. Open Admin → Pending Payments, or check it in Paystack.`
+      `Order #${orderId.slice(0, 8)}: Paystack shows amount ${tx.amount}, fees ${tx.fees ?? 'n/a'}, currency ${tx.currency}, but the order total is ${expected} (kobo). Reference ${reference}. The order was NOT marked paid. Open Online Orders → Pending Payments, or check it in Paystack.`
     );
     return 'amount_mismatch';
   }

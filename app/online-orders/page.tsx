@@ -32,6 +32,30 @@ interface Order {
   order_items: OrderItem[];
 }
 
+interface PendingItem {
+  quantity: number;
+  price_at_purchase: number;
+  item_type: string;
+  products: { name: string } | { name: string }[] | null;
+}
+
+interface PendingOrder {
+  id: string;
+  created_at: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  customer_email: string | null;
+  total_amount: number;
+  delivery_fee: number | null;
+  delivery_method: 'pickup' | 'delivery';
+  order_items: PendingItem[];
+}
+
+interface Note {
+  kind: 'good' | 'info' | 'bad';
+  text: string;
+}
+
 type Action = 'confirm' | 'ship' | 'deliver' | 'cancel' | 'refund';
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
@@ -41,24 +65,49 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   delivered: { label: 'Delivered / Picked Up', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
   cancelled: { label: 'Cancelled', color: 'bg-orange-500/10 text-orange-400 border-orange-500/30' },
   refunded: { label: 'Refunded', color: 'bg-rose-500/10 text-rose-400 border-rose-500/30' },
+  pending: { label: 'Pending Payments', color: 'bg-slate-700 text-slate-300 border-slate-600' },
   failed: { label: 'Failed', color: 'bg-slate-700 text-slate-400 border-slate-600' },
 };
 
-const TABS = ['paid', 'confirmed', 'shipped', 'delivered', 'cancelled', 'refunded'] as const;
+const TABS = ['paid', 'confirmed', 'shipped', 'delivered', 'cancelled', 'refunded', 'pending'] as const;
 
 // The "needs sourcing" tag only matters while the order is still being fulfilled
 const SOURCING_STATUSES = ['paid', 'confirmed', 'shipped'];
 
+// A pending checkout younger than this is probably still on the payment page
+const IN_PROGRESS_MINUTES = 10;
+
 const MIN_REASON = 5;
 const MAX_REASON = 300;
+
+function minutesAgo(iso: string) {
+  return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+}
+
+function ageLabel(minutes: number) {
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const h = Math.floor(minutes / 60);
+  if (h < 24) return `${h} hour${h === 1 ? '' : 's'} ago`;
+  const d = Math.floor(h / 24);
+  return `${d} day${d === 1 ? '' : 's'} ago`;
+}
+
+function pendingItemName(item: PendingItem) {
+  return (Array.isArray(item.products) ? item.products[0]?.name : item.products?.name) || 'Item';
+}
 
 export default function OnlineOrdersPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>('paid');
   const [actingOn, setActingOn] = useState<string | null>(null);
+
+  const [pendingBusyId, setPendingBusyId] = useState<string | null>(null);
+  const [pendingNotes, setPendingNotes] = useState<Record<string, Note>>({});
 
   const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -70,12 +119,19 @@ export default function OnlineOrdersPage() {
       setLoading(false);
       return;
     }
+    const headers = { Authorization: `Bearer ${session.access_token}` };
 
-    const res = await fetch('/api/orders', {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    });
-    const data = await res.json();
+    const [res, pendingRes] = await Promise.all([
+      fetch('/api/orders', { headers }),
+      fetch('/api/orders/pending', { headers }),
+    ]);
+
+    const data = await res.json().catch(() => ({}));
     if (res.ok) setOrders(data.orders || []);
+
+    const pendingData = await pendingRes.json().catch(() => ({}));
+    if (pendingRes.ok) setPendingOrders(pendingData.orders || []);
+
     setLoading(false);
   }, []);
 
@@ -135,6 +191,48 @@ export default function OnlineOrdersPage() {
     return true;
   }
 
+  // Pending Payments: ask Paystack about a checkout, or remove an abandoned one
+  async function pendingAct(orderId: string, action: 'check' | 'remove') {
+    if (
+      action === 'remove' &&
+      !confirm('Remove this unpaid order? Paystack is asked first, and it will be refused if the customer actually paid.')
+    ) {
+      return;
+    }
+
+    setPendingBusyId(orderId);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      setPendingBusyId(null);
+      router.push('/login');
+      return;
+    }
+
+    const res = await fetch('/api/orders/pending', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ orderId, action }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setPendingBusyId(null);
+
+    if (!res.ok) {
+      setPendingNotes((prev) => ({ ...prev, [orderId]: { kind: 'bad', text: data.error || 'Something went wrong.' } }));
+      return;
+    }
+
+    const result: string = data.result;
+    setPendingNotes((prev) => ({
+      ...prev,
+      [orderId]: { kind: result === 'processed' ? 'good' : 'info', text: data.message || 'Done.' },
+    }));
+
+    // Handled orders leave the Pending list (and a paid one appears under New)
+    if (['processed', 'removed', 'already_processed', 'out_of_stock_handled'].includes(result)) {
+      setTimeout(fetchOrders, 1500);
+    }
+  }
+
   function openCancel(order: Order) {
     setCancelTarget(order);
     setCancelReason('');
@@ -161,6 +259,9 @@ export default function OnlineOrdersPage() {
 
   const filtered = orders.filter((o) => o.status === activeTab);
   const sourcingCount = orders.filter((o) => o.needs_sourcing && SOURCING_STATUSES.includes(o.status)).length;
+  const countFor = (tab: (typeof TABS)[number]) =>
+    tab === 'pending' ? pendingOrders.length : orders.filter((o) => o.status === tab).length;
+  const stuckPending = pendingOrders.filter((o) => minutesAgo(o.created_at) >= IN_PROGRESS_MINUTES).length;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -192,16 +293,109 @@ export default function OnlineOrdersPage() {
               className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap border transition ${
                 activeTab === tab
                   ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50'
-                  : 'bg-slate-900 text-slate-400 border-slate-700 hover:bg-slate-800'
+                  : tab === 'pending' && stuckPending > 0
+                    ? 'bg-amber-500/10 text-amber-300 border-amber-500/40 hover:bg-amber-500/20'
+                    : 'bg-slate-900 text-slate-400 border-slate-700 hover:bg-slate-800'
               }`}
             >
-              {STATUS_LABEL[tab]?.label || tab} ({orders.filter((o) => o.status === tab).length})
+              {STATUS_LABEL[tab]?.label || tab} ({countFor(tab)})
             </button>
           ))}
         </div>
 
         {loading ? (
           <p className="text-slate-500 text-sm">Loading orders…</p>
+        ) : activeTab === 'pending' ? (
+          <div>
+            <p className="text-[11px] text-slate-400 mb-4">
+              Checkouts where the customer started to pay but no payment has been recorded. Most are abandoned and are
+              safe to remove. If a customer says they paid, press <strong>Check payment</strong>: it asks Paystack, and
+              if the money arrived, the order moves to New.
+            </p>
+
+            {pendingOrders.length === 0 ? (
+              <p className="text-slate-500 text-sm">No pending payments. 🎉</p>
+            ) : (
+              <div className="space-y-3">
+                {pendingOrders.map((o) => {
+                  const total = Number(o.total_amount) + Number(o.delivery_fee || 0);
+                  const mins = minutesAgo(o.created_at);
+                  const inProgress = mins < IN_PROGRESS_MINUTES;
+                  const note = pendingNotes[o.id];
+                  const busy = pendingBusyId === o.id;
+
+                  return (
+                    <div key={o.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs text-slate-500 font-mono">#{o.id.slice(0, 8)}</p>
+                          <p className="font-bold text-sm">{o.customer_name || 'Unnamed customer'}</p>
+                          <p className="text-xs text-slate-400 break-all">
+                            {o.customer_phone} · {o.customer_email}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-emerald-400">₦{total.toLocaleString()}</p>
+                          <p className="text-[11px] text-slate-400">{ageLabel(mins)}</p>
+                          <span
+                            className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded border ${
+                              inProgress
+                                ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
+                                : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                            }`}
+                          >
+                            {inProgress ? 'Payment in progress' : 'Not completed'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <ul className="mt-2 space-y-0.5">
+                        {o.order_items.map((item, i) => (
+                          <li key={i} className="text-xs text-slate-300">
+                            {item.quantity} × {pendingItemName(item)}
+                            {item.item_type !== 'Full Unit' ? ` (${item.item_type})` : ''}
+                          </li>
+                        ))}
+                      </ul>
+
+                      {note && (
+                        <p
+                          className={`mt-3 text-xs rounded-lg p-2.5 border ${
+                            note.kind === 'good'
+                              ? 'text-emerald-200 bg-emerald-500/10 border-emerald-500/30'
+                              : note.kind === 'bad'
+                                ? 'text-rose-200 bg-rose-500/10 border-rose-500/30'
+                                : 'text-slate-200 bg-slate-800 border-slate-600'
+                          }`}
+                        >
+                          {note.text}
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap justify-end gap-2 mt-3 pt-2 border-t border-slate-800">
+                        <button
+                          disabled={busy}
+                          onClick={() => pendingAct(o.id, 'check')}
+                          className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-50"
+                        >
+                          {busy ? 'Checking…' : 'Check payment'}
+                        </button>
+                        {!inProgress && (
+                          <button
+                            disabled={busy}
+                            onClick={() => pendingAct(o.id, 'remove')}
+                            className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         ) : filtered.length === 0 ? (
           <p className="text-slate-500 text-sm">No orders here.</p>
         ) : (
